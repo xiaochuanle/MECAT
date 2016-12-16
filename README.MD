@@ -334,8 +334,6 @@ by effective position we mean the position in the original sequence that is cove
 extract_sequences [the input fasta file from mecat2cns] [the output filename] [genome size]  [coverage]
 ```
 
-After assembling, the results are given in the folder `working-folder`. The assembled genome is given in the file `working-folder/file-prefix.contigs.fasta` and the details of the contigs are given in the file `working-folder/file-prefix.layout.tigInfo`.
-
 ##<a name="SS-assembly"></a>`mecat2canu`
 
 `mecat2canu` is a modified and more efficient version of the [Canu pipeline](https://github.com/marbl/canu). `mecat2canu` accelerates `canu` by replacing its overlapper `mhap` by `mecat2asmpw`, which is a customized version of `mecat2pw`. The options of `mecat2canu` are the same as `canu` except its overlapper is replaced by `mecat2asmpw`. The command is
