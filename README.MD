@@ -8,17 +8,152 @@
 
 # <a name="S-introduction"></a>Introdction
 
-MECAT is an ultra-fast Mapping, Error Correction and de novo Assembly Tools for single molecula sequencing (SMRT) reads. MECAT employs novel alignment and error correction algorithms that are much more efficient than the state of art of aligners and error correction tools. MECAT can be used for effectively de novo assemblying large genomes. For example, on a 32-thread computer, MECAT takes 14 days to assemble a human genome based on 54x SMRT data, which is 40 times faster than the current [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/). We also use MECAT to assemble a diploid human genome based on 108x SMRT data only in 40 days. The latter assembly leads a great improvement of quality to the previous genome assembled from the 54x haploid SMRT data. MECAT performance were compared with [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon) in five real datasets. The quality of assembled contigs produced by MECAT is the same or better than that of the [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon). Here are some comparisons:
-
+MECAT is an ultra-fast Mapping, Error Correction and de novo Assembly Tools for single molecula sequencing (SMRT) reads. MECAT employs novel alignment and error correction algorithms that are much more efficient than the state of art of aligners and error correction tools. MECAT can be used for effectively de novo assemblying large genomes. For example, on a 32-thread computer, MECAT takes 14 days to assemble a human genome based on 54x SMRT data, which is 40 times faster than the current [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/). We also use MECAT to assemble a diploid human genome based on 108x SMRT data only in 40 days. The latter assembly leads a great improvement of quality to the previous genome assembled from the 54x haploid SMRT data. MECAT performance were compared with [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon) in five real datasets. The quality of assembled contigs produced by MECAT is the same or better than that of the [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon). Here are some comparisons on the 32-thread computer with 2.0 GHz CPU and 512 GB RAM memory:
 <div>
     <table border="0">
       <tr>
-        <th>one</th>
-        <th>two</th>
+        <th>Genome</th>
+        <th>Pipeline</th>
+        <th>Thread number</th>
+        <th>Total running time (h)</th>
+        <th>NG50 of genome</th>
       </tr>
       <tr>
-        <td>Hello</td>
-        <td>你好</td>
+        <th>E.coli</th>
+        <th>FALCON</th>
+        <th>16</th>
+        <th>1.21</th>
+        <th>4,635,129 </th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>PBcR-MHAP</th>
+        <th>16</th>
+        <th>1.29</th>
+        <th>4,652,272 </th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>Canu</th>
+        <th>16</th>
+        <th>0.71</th>
+        <th>4,648,002</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>MECAT</th>
+        <th>16</th>
+        <th>0.24</th>
+        <th>4,649,626</th>
+      </tr>
+
+      <tr>
+        <th>Yeast</th>
+        <th>FALCON</th>
+        <th>16</th>
+        <th>2.16</th>
+        <th>587,169</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>PBcR-MHAP</th>
+        <th>16</th>
+        <th>4.2</th>
+        <th>818,229</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>Canu</th>
+        <th>16</th>
+        <th>5.11</th>
+        <th>739,902</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>MECAT</th>
+        <th>16</th>
+        <th>0.91</th>
+        <th>929,350</th>
+      </tr>
+
+      <tr>
+        <th>A.thaliana</th>
+        <th>FALCON</th>
+        <th>16</th>
+        <th>223.84</th>
+        <th>7,583,032</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>PBcR-MHAP</th>
+        <th>16</th>
+        <th>188.7</th>
+        <th>9,610,192</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>Canu</th>
+        <th>16</th>
+        <th>118.57</th>
+        <th>8,315,338</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>MECAT</th>
+        <th>16</th>
+        <th>10.73</th>
+        <th>12600961</th>
+      </tr>
+
+      <tr>
+        <th>D.melanogaster</th>
+        <th>FALCON</th>
+        <th>16</th>
+        <th>140.72</th>
+        <th>15,664,372</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>PBcR-MHAP</th>
+        <th>16</th>
+        <th>101.22</th>
+        <th>13,627,256</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>Canu</th>
+        <th>16</th>
+        <th>69.34</th>
+        <th>14,179,324</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>MECAT</th>
+        <th>16</th>
+        <th>9.58</th>
+        <th>18,111,159</th>
+      </tr>
+
+      <tr>
+        <th>Human(54X)</th>
+        <th>PBcR-MHAH(f)</th>
+        <th>32</th>
+        <th>5750</th>
+        <th>1,857,788</th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>PBcR-MHAH(s)</th>
+        <th>32</th>
+        <th>13000</th>
+        <th>4,320,471 </th>
+      </tr>
+      <tr>
+        <th></th>
+        <th>MECAT</th>
+        <th>32</th>
+        <th>230.54</th>
+        <th>4,878,957</th>
       </tr>
     </table>
 </div>
