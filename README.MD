@@ -10,113 +10,18 @@
 
 MECAT is an ultra-fast Mapping, Error Correction and de novo Assembly Tools for single molecula sequencing (SMRT) reads. MECAT employs novel alignment and error correction algorithms that are much more efficient than the state of art of aligners and error correction tools. MECAT can be used for effectively de novo assemblying large genomes. For example, on a 32-thread computer, MECAT takes 14 days to assemble a human genome based on 54x SMRT data, which is 40 times faster than the current [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/). We also use MECAT to assemble a diploid human genome based on 108x SMRT data only in 40 days. The latter assembly leads a great improvement of quality to the previous genome assembled from the 54x haploid SMRT data. MECAT performance were compared with [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon) in five real datasets. The quality of assembled contigs produced by MECAT is the same or better than that of the [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon). Here are some comparisons:
 
-<tbody>
-<tr>
-<td>E.coli</td>
-<td>FALCON</td>
-<td>32</td>
-<td>0.53</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>PBcR-MHAP</td>
-<td>16</td>
-<td>1.29</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>MECAT</td>
-<td>16</td>
-<td>0.39</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td>Yeast</td>
-<td>FALCON</td>
-<td>32</td>
-<td>2.34</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>PBcR-MHAP</td>
-<td>16</td>
-<td>4.2</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>MECAT</td>
-<td>16</td>
-<td>1.12</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td>A.thaliana</td>
-<td>FALCON</td>
-<td>32</td>
-<td>145.58</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>PBcR-MHAP</td>
-<td>16</td>
-<td>188.7</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>MECAT</td>
-<td>16</td>
-<td>24.66</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td>D.melanogaster</td>
-<td>FALCON</td>
-<td>32</td>
-<td>2.34</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>PBcR-MHAP</td>
-<td>16</td>
-<td>4.2</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>MECAT</td>
-<td>16</td>
-<td>1.12</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td>Human</td>
-<td>FALCON</td>
-<td>32</td>
-<td>2.34</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>PBcR-MHAP</td>
-<td>16</td>
-<td>4.2</td>
-<td>0.53</td>
-</tr>
-<tr>
-<td></td>
-<td>MECAT</td>
-<td>16</td>
-<td>1.12</td>
-<td>0.53</td>
-</tr>
-</tbody>
+<div>
+    <table border="0">
+      <tr>
+        <th>one</th>
+        <th>two</th>
+      </tr>
+      <tr>
+        <td>Hello</td>
+        <td>你好</td>
+      </tr>
+    </table>
+</div>
 
 MECAT consists of four modules:
 * `mecat2pw`, a fast and accurate pairwise mapping tool for SMRT reads
