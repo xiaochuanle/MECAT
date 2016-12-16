@@ -327,7 +327,14 @@ where
 * `D` is the length of the corrected sequence
 
 by effective position we mean the position in the original sequence that is covered by at least `c` (the argument to the option `-c`) reads.
+##<a name="SS-Extract longest correted reads"></a>`extract_sequences`
 
+`extract_sequences` was applied into extract 25X 0r 40X longest sequences from the corrected data. The command is
+``` shell
+extract_sequences [the input fasta file from mecat2cns] [the output filename] [genome size]  [coverage]
+```
+
+After assembling, the results are given in the folder `working-folder`. The assembled genome is given in the file `working-folder/file-prefix.contigs.fasta` and the details of the contigs are given in the file `working-folder/file-prefix.layout.tigInfo`.
 
 ##<a name="SS-assembly"></a>`mecat2canu`
 
