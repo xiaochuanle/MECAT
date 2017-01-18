@@ -63,7 +63,7 @@ Read_Frags(feParameters   *G,
     gkRead *read = gkpStore->gkStore_getRead(curID);
 
     basesLength += read->gkRead_sequenceLength() + 1;
-    votesLength += read->gkRead_sequenceLength();
+    votesLength += read->gkRead_sequenceLength() + 1;
   }
 
   uint64  totAlloc = (sizeof(char)         * basesLength +
@@ -98,10 +98,10 @@ Read_Frags(feParameters   *G,
     char   *readBases  = readData->gkReadData_getSequence();
 
     G->reads[curID - G->bgnID].sequence = G->readBases + basesLength;
-    G->reads[curID - G->bgnID].vote     = G->readVotes + votesLength;
+    G->reads[curID - G->bgnID].vote     = G->readVotes + votesLength + 1;
 
     basesLength += readLength + 1;
-    votesLength += readLength;
+    votesLength += readLength + 1;
     readsLoaded += 1;
 
     for (uint32 bb=0; bb<readLength; bb++)

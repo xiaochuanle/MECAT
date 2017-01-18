@@ -6,12 +6,14 @@
 
 * [Quick Start](#S-quick-start)
 
+* [Input Format](#S-input-format)
+
 * [Program Descriptions](#S-program-description)
 
 * [Citation](#S-citation)
 
 * [Contact](#S-contact)
-
+* [Update Information](#S-update)
 
 
 # <a name="S-introduction"></a>Introdction
@@ -341,17 +343,25 @@ MEAP is written in C, C++, and perl. It is open source and distributed under the
 ```
 
 git clone https://github.com/xiaochuanle/MECAT.git
-
 cd MECAT
-
-./intall.sh
+make
 
 ```
 
 
 
 After installation, all the executables are found in `mecat/Linux-amd64/bin`. The folder name `Linux-amd64` will vary in operating systems. For example, in MAC, the executables are put in `mecat/Darwin-amd64/bin`.
+Before using MECAT, we should add the following two pathes:
 
+* Add `MECAT/Linux-amd64/bin` to `PATH`, for example:
+``` shell
+export PATH=$PATH:/home/sysu/MECAT/Linux-amd64/bin
+```
+* Add `MECAT/aux_tools/hdf5/lib` to `LD_LIBRARY_PATH`, for example:
+``` shell
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/sysu/MECAT/aux_tools/hdf5/lib
+```
+`MECAT/aux_tools/hdf5/lib` is only used by `MECAT/Linux-amd64/bin/dextract`.
 
 
 # <a name="S-quick-start"></a>Quick Start
@@ -417,6 +427,15 @@ mecat2canu -assemble -p ecoli -d ecoli genomeSize=4800000 ErrorRate=0.02 maxMemo
 After step 4, the assembled genome is given in file `ecoli/ecoli.contigs.fasta`. Details of the contigs can be found in file `ecoli/ecoli.layout.tigInfo`.
 
 
+# <a name="S-input-format"></a>Input Format
+
+MECAT is capable of processing `FASTA`, `FASTQ`, and `H5` format files. However, the `H5` files must first be transfered to `FASTA`
+format by running `MECAT/Linux-amd64/bin/dextract` before running MECAT. For example:
+```shell
+find pathto/raw_reads -name "*.bax.h5" -exec readlink -f {} \; > reads.fofn
+while read line; do   dextract -v $line >> reads.fasta ; done <  reads.fofn
+```
+the extracted result should be the reads.fasta file for mecat's input file.
 
 # <a name="S-program-description"></a>Program Descriptions
 
@@ -706,7 +725,10 @@ Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi
 
 * Feng Luo, luofeng@clemson.edu
 
-
+#<a name="S-update"></a>Update Information
+MECAT v1.1 replaced the old MECAT,some debug were resolved and some new fuctions were added:
+1. we added the extracted tools for the raw `H5` format files.
+2. some debugs from running mecat2canu were solved
 
 
 
