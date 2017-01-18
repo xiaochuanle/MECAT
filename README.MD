@@ -727,8 +727,8 @@ Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi
 
 #<a name="S-update"></a>Update Information
 MECAT v1.1 replaced the old MECAT,some debug were resolved and some new fuctions were added:
-1. we added the extracted tools for the raw `H5` format files.
-2. some debugs from running mecat2canu were solved
+* 1. we added the extracted tools for the raw `H5` format files.
+* 2. some debugs from running mecat2canu were solved
 
 
 
