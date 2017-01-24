@@ -19,7 +19,7 @@ extractSequences:
 	cd extract_sequences && make
 
 mecatCanu:
-	cd mecat2canu/src && make
+	cd mecat2canu/src && chmod 777 canu_version_update.pl && make
 
 mecat:
 	cd src && make
