@@ -378,7 +378,7 @@ where
 
 by effective position we mean the position in the original sequence that is covered by at least `c` (the argument to the option `-c`) reads.
 
-##<a name="SS-Extract longest correted reads"></a>`extract_sequences`
+##</a>`extract_sequences`
 
 
 
@@ -392,7 +392,7 @@ extract_sequences [the input fasta file from mecat2cns] [the output filename] [g
 
 
 
-##<a name="SS-assembly"></a>`mecat2canu`
+##</a>`mecat2canu`
 
 
 
