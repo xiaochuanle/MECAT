@@ -377,7 +377,7 @@ where
 
 by effective position we mean the position in the original sequence that is covered by at least `c` (the argument to the option `-c`) reads.
 
-##<a name="SS-Extract longest correted reads"></a>`extract_sequences`
+##<a name="SS-Extract longest correted reads"></a> `extract_sequences`
 
 
 
@@ -391,7 +391,7 @@ extract_sequences [the input fasta file from mecat2cns] [the output filename] [g
 
 
 
-##<a name="SS-assembly"></a>`mecat2canu`
+##<a name="SS-assembly"></a> `mecat2canu`
 
 
 
@@ -415,11 +415,11 @@ After assembling, the results are given in the folder `working-folder`. The asse
 
 
 
-#<a name="S-citation"></a>Citation
+#<a name="S-citation"></a>`Citation`
 
 Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi Xie. [MECAT: an ultra-fast mapping, error correction and de novo assembly tool for single-molecule sequencing reads](http://biorxiv.org/content/early/2016/12/15/089250). bioRxiv 089250; doi: https://doi.org/10.1101/089250
 
-#<a name="S-contact"></a> Contact
+#<a name="S-contact"></a> `Contact`
 
 * Chuan-Le Xiao, xiaochuanle@126.com
 
@@ -427,7 +427,7 @@ Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi
 
 * Feng Luo, luofeng@clemson.edu
 
-#<a name="S-update"></a>Update Information
+#<a name="S-update"></a>`Update Information`
 MECAT v1.1 replaced the old MECAT,some debug were resolved and some new fuctions were added:
 * 1. we added the extracted tools for the raw `H5` format files.
 * 2. some debugs from running mecat2canu were solved
