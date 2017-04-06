@@ -1,0 +1,19 @@
+CFLAGS = -O3 -Wall -Wextra -Wno-unused-result -fno-strict-aliasing
+CC = gcc
+
+all: dextract dexta undexta dexqv undexqv
+
+dextract: 
+	${CC} $(CFLAGS) -I$(HDF5_INCLUDE) -L$(HDF5_LIB) -o dextract dextract.c DB.c QV.c -lhdf5
+
+dexta: 
+	${CC} ${CFLAGS} -o dexta gdexta.c DB.c QV.c
+
+undexta: 
+	${CC} ${CFLAGS} -o undexta undexta.c DB.c QV.c
+
+dexqv: 
+	${CC} ${CFLAGS} -o dexqv dexqv.c DB.c QV.c
+
+undexqv: 
+	${CC} ${CFLAGS} -o undexqv undexqv.c DB.c QV.c

@@ -153,6 +153,44 @@ get_effective_ranges(std::vector<MappingRange>& mranges, std::vector<MappingRang
 }
 
 void
+output_cns_result(std::vector<CnsResult>& cns_results,
+				  CnsResult& cr,
+				  const index_t beg,
+				  const index_t end,
+				  std::string& cns_seq) 
+{
+	const size_t MaxSeqSize = 60000;
+	const size_t BlkSize = 50000;
+	const size_t OvlpSize = 10000;
+	
+	size_t size = cns_seq.size();
+	if (size <= MaxSeqSize) {
+		cr.range[0] = beg;
+		cr.range[1] = end;
+		cr.seq = cns_seq;
+		cns_results.push_back(cr);
+	} else {
+		size_t L = 0, R;
+		size_t left = size;
+		while (left) {
+			R = std::min(L + BlkSize, size);
+			size_t blksize = R - L;
+			left -= blksize;
+			if (left <= OvlpSize + 1000) {
+				R = size;
+				blksize += left;
+				left = 0;
+			}
+			cr.range[0] = L + beg;
+			cr.range[1] = R + beg;
+			cr.seq = cns_seq.substr(L, blksize);
+			cns_results.push_back(cr);
+			L = R - OvlpSize;
+		}
+	}
+}
+
+void
 meap_consensus_one_read_m4(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid)
 {
 	PackedDB& reads = *ctd->reads;
@@ -213,6 +251,7 @@ meap_consensus_one_read_m4(ConsensusThreadData* ctd, const index_t read_id, cons
 	const int min_cov = ctd->rco.min_cov;
 	const int min_size = ctd->rco.min_size;
 	CnsResult cns_result;
+	std::string cns_seq;
 	cns_result.id = read_id;
 	for (miter = eranges.begin(); miter != eranges.end(); ++miter)
 	{
@@ -226,10 +265,9 @@ meap_consensus_one_read_m4(ConsensusThreadData* ctd, const index_t read_id, cons
 			if (end - beg >= 0.95 * min_size)
 			{
 				meap_consensus_one_segment(cns_table + beg, end - beg, ctd->id_list,
-										   beg, cns_vec, nqstr, ntstr, cns_result.seq, min_cov);
-				cns_result.range[0] = beg;
-				cns_result.range[1] = end;
-				cns_results.push_back(cns_result);
+										   beg, cns_vec, nqstr, ntstr, cns_seq, min_cov);
+				
+				output_cns_result(cns_results, cns_result, beg, end, cns_seq);
 			}
 			
 			beg = end;

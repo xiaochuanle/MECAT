@@ -6,14 +6,7 @@ ifeq (${MACHINE_TYPE}, x86_64)
 endif
 BUILD_DIR	:= ${PWD}/${OS_TYPE}-${MACHINE_TYPE}/bin
 
-all: dextract extractSequences mecatCanu mecat
-
-aux_tools/hdf5/lib/libhdf5_cpp.so:
-	cd aux_tools/hdf5 && make
-
-dextract: aux_tools/hdf5/lib/libhdf5_cpp.so
-	echo ${PWD}
-	cd aux_tools/dextractor && make PATH_HDF5=${PWD}/aux_tools/hdf5 BUILD_DIR=${BUILD_DIR}
+all: extractSequences mecatCanu mecat
 
 extractSequences: 
 	cd extract_sequences && make

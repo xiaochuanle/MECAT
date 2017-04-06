@@ -727,6 +727,10 @@ candidate_detect(PWThreadData* data, int tid)
 	for (rid = Lid; rid < Rid; ++rid)
 	{
 		int rsize = data->reads->offset_list->offset_list[rid].size;
+        if (rsize >= MAX_SEQ_SIZE) {
+            cout << "rsize = " << rsize << "\t" << MAX_SEQ_SIZE << endl;
+            abort();
+        }
 		extract_one_seq(data->reads, rid, read1);
 		reverse_complement(read2, read1, rsize);
 		int s;

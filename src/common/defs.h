@@ -172,7 +172,7 @@ const u1_t* get_dna_complement_table();
 #define FWD 0
 #define REV 1
 #define REVERSE_STRAND(s) (1-(s))
-#define MAX_SEQ_SIZE 100000
+#define MAX_SEQ_SIZE 500000
 #define MAX_INVALID_END_SIZE 200
 #define MIN_EXTEND_SIZE 500
 #define MIN_OVERLAP_SIZE 1000

@@ -187,30 +187,47 @@ MEAP is written in C, C++, and perl. It is open source and distributed under the
 
 # <a name="S-installation"></a>Installation
 
+The current directory is `/public/users/chenying/smrt_asm`.
 
-
-```
-
+* Install `MECAT`:
+``` shell
 git clone https://github.com/xiaochuanle/MECAT.git
 cd MECAT
+make 
+cd ..
+```
+After installation, all the executables are found in `MECAT/Linux-amd64/bin`. The folder name `Linux-amd64` will vary in operating systems. For example, in MAC, the executables are put in `MECAT/Darwin-amd64/bin`.
+
+* Install `HDF5`:
+``` shell
+wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.15-patch1/src/hdf5-1.8.15-patch1.tar.gz
+tar xzvf hdf5-1.8.15-patch1.tar.gz
+mkdir hdf5
+cd hdf5-1.8.15-patch1
+./configure --enable-cxx --prefix=/public/users/chenying/smrt_asm/hdf5
 make
-
+make install
+cd ..
 ```
+The header files of `HDF5` are in `hdf5/include`. The library files of `HDF5` are in `hdf5/lib` (in some systems, they are put in `hdf5/lib64`, check it!).
 
-
-
-After installation, all the executables are found in `mecat/Linux-amd64/bin`. The folder name `Linux-amd64` will vary in operating systems. For example, in MAC, the executables are put in `mecat/Darwin-amd64/bin`.
-Before using MECAT, we should add the following two pathes:
-
-* Add `MECAT/Linux-amd64/bin` to `PATH`, for example:
+* Install `dextract`
 ``` shell
-export PATH=$PATH:/home/sysu/MECAT/Linux-amd64/bin
+git clone https://github.com/PacificBiosciences/DEXTRACTOR.git
+cp MECAT/dextract_makefile DEXTRACTOR
+cd DEXTRACTOR
+export HDF5_INCLUDE=/public/users/chenying/smrt_asm/hdf5/include
+export HDF5_LIB=/public/users/chenying/smrt_asm/hdf5/lib
+make -f dextract_makefile
+cd ..
 ```
-* Add `MECAT/aux_tools/hdf5/lib` to `LD_LIBRARY_PATH`, for example:
+
+* Add relative pathes
 ``` shell
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/sysu/MECAT/aux_tools/hdf5/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/public/users/chenying/smrt_asm/hdf5/lib
+export PATH=/public/users/chenying/smrt_asm/MECAT/Linux-amd64/bin:$PATH
+export PATH=/public/users/chenying/smrt_asm/DEXTRACTOR:$PATH
 ```
-`MECAT/aux_tools/hdf5/lib` is only used by `MECAT/Linux-amd64/bin/dextract`.
 
 
 # <a name="S-quick-start"></a>Quick Start
@@ -218,20 +235,6 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/sysu/MECAT/aux_tools/hdf5/lib
 
 
 Using MECAT to assemble a genome involves 4 steps. Here we take assemblying the genome of Ecoli as an example, to go through each step in order. Options of each command will be given in next section. We download the reads [ecoli_filtered.fastq.gz](http://gembox.cbcb.umd.edu/mhap/raw/ecoli_filtered.fastq.gz) from the MHAP website. By decompressing it we obtain `ecoli_filtered.fastq`.
-
-
-
-Before assemblying, we must add `mecat/Linux-amd64/bin` to the system path. For example,
-
-```shell
-
-export PATH=pathto/MECAT/Linux-amd64/bin:$PATH
-
-```
-
-And we assume that all the following commands take place in the same folder.
-
-
 
 * Step 1, using `mecat2pw` to detect overlapping candidates
 
@@ -279,7 +282,7 @@ After step 4, the assembled genome is given in file `ecoli/ecoli.contigs.fasta`.
 # <a name="S-input-format"></a>Input Format
 
 MECAT is capable of processing `FASTA`, `FASTQ`, and `H5` format files. However, the `H5` files must first be transfered to `FASTA`
-format by running `MECAT/Linux-amd64/bin/dextract` before running MECAT. For example:
+format by running `DEXTRACTOR/dextract` before running MECAT. For example:
 ```shell
 find pathto/raw_reads -name "*.bax.h5" -exec readlink -f {} \; > reads.fofn
 while read line; do   dextract -v $line >> reads.fasta ; done <  reads.fofn
