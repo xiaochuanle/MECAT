@@ -1,0 +1,22 @@
+=head2 Mon May 22 13:58:01 2017: C<Module> L<Filesys::Df|Filesys::Df>
+
+=over 4
+
+=item *
+
+C<installed into: ../../../../Linux-amd64/bin/lib/canu/lib/perl5>
+
+=item *
+
+C<LINKTYPE: dynamic>
+
+=item *
+
+C<VERSION: 0.92>
+
+=item *
+
+C<EXE_FILES: >
+
+=back
+
