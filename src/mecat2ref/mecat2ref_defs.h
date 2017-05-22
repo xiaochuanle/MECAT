@@ -81,8 +81,15 @@ typedef struct
 
 struct Back_List
 {
-    short int score,loczhi[SM],seedno[SM],seednum;
+    short int score, score2, loczhi[SM],seedno[SM],seednum;
     int index;
 };
+
+typedef struct
+{
+    long loc1,loc2,left1,left2,right1,right2;
+    int score, num1,num2;
+    char chain;
+} candidate_save;
 
 #endif // MEAP_REF_DEFS_H

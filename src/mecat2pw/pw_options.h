@@ -14,7 +14,10 @@ typedef struct
     const char* wrk_dir;
     int         num_threads;
     int         num_candidates;
+	int			min_align_size;
+	int			min_kmer_match;
     int         output_gapped_start_point;
+	int 		tech;
 } options_t;
 
 void

@@ -221,7 +221,7 @@ partition_m4records(const char* m4_file_name, const double min_cov_ratio, const 
     index_t num_reads, num_qualified_records;
     get_qualified_m4record_counts(m4_file_name, min_cov_ratio, num_qualified_records, num_reads);
 	set<index_t> repeat_reads;
-	get_repeat_reads(m4_file_name, min_cov_ratio, num_reads, repeat_reads);
+	//get_repeat_reads(m4_file_name, min_cov_ratio, num_reads, repeat_reads);
     const index_t num_batches = (num_reads + batch_size - 1) / batch_size;
     std::string idx_file_name;
     generate_partition_index_file_name(m4_file_name, idx_file_name);

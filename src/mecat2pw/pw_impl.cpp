@@ -1,6 +1,7 @@
 #include "../common/split_database.h"
 #include "pw_options.h"
-#include "../common/dw.h"
+#include "../common/diff_gapalign.h"
+#include "../common/xdrop_gapalign.h"
 #include "../common/packed_db.h"
 #include "../common/lookup_table.h"
 #include "pw_impl.h"
@@ -17,9 +18,14 @@
 static int MAXC = 100;
 static int output_gapped_start_point = 1;
 static int kmer_size = 13;
+static const double ddfs_cutoff_pacbio = 0.25;
+static const double ddfs_cutoff_nanopore = 0.25;
+static double ddfs_cutoff = ddfs_cutoff_pacbio;
+static int min_align_size = 0;
+static int min_kmer_match = 0;
+static int min_kmer_dist = 0;
 
 using namespace std;
-using namespace ns_banded_sw;
 
 PWThreadData::PWThreadData(options_t* opt, volume_t* ref, volume_t* rd, ref_index* idx, std::ostream* o)
 	: options(opt), used_thread_id(0), reference(ref), reads(rd), ridx(idx), out(o), m4_results(NULL), ec_results(NULL), next_processed_id(0)
@@ -126,7 +132,7 @@ void insert_loc(Back_List *spr,int loc,int seedn,float len)
     list_score[SM]=0;
     mini=-1;
     minval=10000;
-    for(i=0; i<SM; i++)for(j=i+1; j<SI; j++)if(list_seed[j]-list_seed[i]>0&&list_loc[j]-list_loc[i]>0&&fabs((list_loc[j]-list_loc[i])/((list_seed[j]-list_seed[i])*len)-1.0)<0.3)
+    for(i=0; i<SM; i++)for(j=i+1; j<SI; j++)if(list_seed[j]-list_seed[i]>0&&list_loc[j]-list_loc[i]>0&&fabs((list_loc[j]-list_loc[i])/((list_seed[j]-list_seed[i])*len)-1.0)<ddfs_cutoff)
             {
                 list_score[i]++;
                 list_score[j]++;
@@ -156,7 +162,7 @@ int find_location(int *t_loc,int *t_seedn,int *t_score,int *loc,int k,int *rep_l
 {
     int i,j,maxval=0,maxi,rep=0,lasti = 0,tempi;
     for(i=0; i<k; i++)t_score[i]=0;
-    for(i=0; i<k-1; i++)for(j=i+1,tempi=t_seedn[i]; j<k; j++)if(tempi!=t_seedn[j]&&t_seedn[j]-t_seedn[i]>0&&t_loc[j]-t_loc[i]>0&&t_loc[j]-t_loc[i]<read_len1&&fabs((t_loc[j]-t_loc[i])/((t_seedn[j]-t_seedn[i])*len)-1)<0.25)
+    for(i=0; i<k-1; i++)for(j=i+1,tempi=t_seedn[i]; j<k; j++)if(tempi!=t_seedn[j]&&t_seedn[j]-t_seedn[i]>0&&t_loc[j]-t_loc[i]>0&&t_loc[j]-t_loc[i]<read_len1&&fabs((t_loc[j]-t_loc[i])/((t_seedn[j]-t_seedn[i])*len)-1)<ddfs_cutoff)
             {
                 t_score[i]++;
                 t_score[j]++;
@@ -187,7 +193,7 @@ int find_location(int *t_loc,int *t_seedn,int *t_score,int *loc,int k,int *rep_l
     }
     else if(maxval>=5&&rep!=maxval)
     {
-        for(j=0; j<maxi; j++)if(t_seedn[maxi]-t_seedn[j]>0&&t_loc[maxi]-t_loc[j]>0&&t_loc[maxi]-t_loc[j]<read_len1&&fabs((t_loc[maxi]-t_loc[j])/((t_seedn[maxi]-t_seedn[j])*len)-1)<0.25)
+        for(j=0; j<maxi; j++)if(t_seedn[maxi]-t_seedn[j]>0&&t_loc[maxi]-t_loc[j]>0&&t_loc[maxi]-t_loc[j]<read_len1&&fabs((t_loc[maxi]-t_loc[j])/((t_seedn[maxi]-t_seedn[j])*len)-1)<ddfs_cutoff)
             {
                 if(loc[0]==0)
                 {
@@ -213,7 +219,7 @@ int find_location(int *t_loc,int *t_seedn,int *t_score,int *loc,int k,int *rep_l
             loc[2]=t_loc[j];
             loc[3]=t_seedn[j];
         }
-        for(j=maxi+1; j<k; j++)if(t_seedn[j]-t_seedn[maxi]>0&&t_loc[j]-t_loc[maxi]>0&&t_loc[j]-t_loc[maxi]<=read_len1&&fabs((t_loc[j]-t_loc[maxi])/((t_seedn[j]-t_seedn[maxi])*len)-1)<0.25)
+        for(j=maxi+1; j<k; j++)if(t_seedn[j]-t_seedn[maxi]>0&&t_loc[j]-t_loc[maxi]>0&&t_loc[j]-t_loc[maxi]<=read_len1&&fabs((t_loc[j]-t_loc[maxi])/((t_seedn[j]-t_seedn[maxi])*len)-1)<ddfs_cutoff)
             {
                 if(loc[0]==0)
                 {
@@ -300,7 +306,7 @@ get_candidates(volume_t* ref,
 	int location_loc[4],repeat_loc;
 	int i, j, k, u_k;
 	for (i = 0; i < num_segs; ++i, ++index_spr, ++index_ss) 
-		if (*index_ss > 7)
+		if (*index_ss >= 2 * min_kmer_match)
 		{
 			Back_List *spr = database + (*index_spr), *spr1;
 			if (spr->score == 0) continue;
@@ -348,7 +354,7 @@ get_candidates(volume_t* ref,
 			{
 				int f = find_location(temp_list, temp_seedn, temp_score, location_loc, u_k, &repeat_loc, BC, read_size);
 				if (!f) continue;
-				if (temp_score[repeat_loc] < 10) continue;
+				if (temp_score[repeat_loc] < 2 * min_kmer_match + 2) continue;
 			}
 			
 			candidate_temp.score = temp_score[repeat_loc];
@@ -386,7 +392,7 @@ get_candidates(volume_t* ref,
 				int right_length2 = read_size - location_loc[1];
 				int num1 = (left_length1 > left_length2) ? left_length2 : left_length1;
 				int num2 = (right_length1 > right_length2) ? right_length2 : right_length1;
-				if (num1 + num2 < 1800) continue;
+				if (num1 + num2 < min_kmer_dist) continue;
 				candidate_temp.loc1=location_loc[0] - sstart;
 				candidate_temp.num1=num1;
 				candidate_temp.loc2=location_loc[1];
@@ -402,12 +408,13 @@ get_candidates(volume_t* ref,
 				for(u_k=*index_spr-1, spr1=spr-1; u_k>=0&&nlb>0; spr1--,--nlb,u_k--)if(spr1->score>0)
 					{
 						start_loc = MUL_ZV(u_k);
-						for(j=0,s_k=0; j<spr1->score; j++)if(fabs((loc_list-start_loc-spr1->loczhi[j])/((loc_seed-spr1->seedno[j])*BC*1.0)-1.0)<0.25)
+						int scnt = min((int)spr1->score, SM);
+						for(j=0,s_k=0; j < scnt; j++)if(fabs((loc_list-start_loc-spr1->loczhi[j])/((loc_seed-spr1->seedno[j])*BC*1.0)-1.0)<ddfs_cutoff)
 							{
 								seedcount++;
 								s_k++;
 							}
-						if(s_k*1.0/spr1->score>0.4)
+						if(s_k*1.0 / scnt > 0.4)
 						{
 							spr1->score=0;
 						}
@@ -418,12 +425,13 @@ get_candidates(volume_t* ref,
 				for(u_k=*index_spr+1,spr1=spr+1; nrb; spr1++,--nrb,u_k++)if(spr1->score>0)
 					{
 						start_loc = MUL_ZV(u_k);
-						for(j=0,s_k=0; j<spr1->score; j++)if(fabs((start_loc+spr1->loczhi[j]-loc_list)/((spr1->seedno[j]-loc_seed)*BC*1.0)-1.0)<0.25)
+						int scnt = min((int)spr1->score, SM);
+						for(j=0,s_k=0; j < scnt; j++)if(fabs((start_loc+spr1->loczhi[j]-loc_list)/((spr1->seedno[j]-loc_seed)*BC*1.0)-1.0)<ddfs_cutoff)
 							{
 								seedcount++;
 								s_k++;
 							}
-						if(s_k*1.0/spr1->score>0.4)
+						if(s_k*1.0 / scnt > 0.4)
 						{
 							spr1->score=0;
 						}
@@ -457,7 +465,7 @@ get_candidates(volume_t* ref,
 }
 
 void
-fill_m4record(OutputStore* os, const int qid, const int sid,
+fill_m4record(GapAligner* aligner, const int qid, const int sid,
 			  const char qchain, int qsize, int ssize,
 			  int qstart, int sstart, int vscore, M4Record* m)
 {
@@ -465,15 +473,15 @@ fill_m4record(OutputStore* os, const int qid, const int sid,
 	{
 		m->qid = sid;
 		m->sid = qid;
-		m->ident = os->ident;
+		m->ident = aligner->calc_ident();
 		m->vscore = vscore;
 		m->qdir = 0;
-		m->qoff = os->target_start;
-		m->qend = os->target_end;
+		m->qoff = aligner->target_start();
+		m->qend = aligner->target_end();
 		m->qsize = ssize;
 		m->sdir = 0;
-		m->soff = os->query_start;
-		m->send = os->query_end;
+		m->soff = aligner->query_start();
+		m->send = aligner->query_end();
 		m->ssize = qsize;
 		m->qext = sstart;
 		m->sext = qstart;
@@ -482,15 +490,15 @@ fill_m4record(OutputStore* os, const int qid, const int sid,
 	{
 		m->qid = sid;
 		m->sid = qid;
-		m->ident = os->ident;
+		m->ident = aligner->calc_ident();
 		m->vscore = vscore;
 		m->qdir = 0;
-		m->qoff = os->target_start;
-		m->qend = os->target_end;
+		m->qoff = aligner->target_start();
+		m->qend = aligner->target_end();
 		m->qsize = ssize;
 		m->sdir = 1;
-		m->soff = qsize - os->query_end;
-		m->send = qsize - os->query_start;
+		m->soff = qsize - aligner->query_end();
+		m->send = qsize - aligner->query_start();
 		m->ssize = qsize;
 		m->qext = sstart;
 		m->sext = qsize - 1 - qstart;
@@ -622,11 +630,18 @@ pairwise_mapping(PWThreadData* data, int tid)
 	SeedingBK* sbk = new SeedingBK(data->reference->curr);
 	candidate_save candidates[MAXC];
 	int num_candidates = 0;
-	DiffRunningData* drd = new DiffRunningData(get_sw_parameters_small());
 	M4Record* m4_list = data->m4_results[tid];
 	int m4_list_size = 0;
 	M4Record* m4v = new M4Record[MAXC];
 	int num_m4 = 0;
+	GapAligner* aligner = NULL;
+	if (data->options->tech == TECH_PACBIO) {
+		aligner = new DiffAligner(0);
+	} else if (data->options->tech == TECH_NANOPORE) {
+		aligner = new XdropAligner(0);
+	} else {
+		ERROR("TECH must be either %d or %d", TECH_PACBIO, TECH_NANOPORE);
+	}
 
 	int rid, Lid, Rid;
 	while (1)
@@ -669,14 +684,12 @@ pairwise_mapping(PWThreadData* data, int tid)
 					sstart += kmer_size / 2;
 				}
 				int ssize = data->reference->offset_list->offset_list[candidates[s].readno - data->reference->start_read_id].size;
-
-				int flag = dw(read, rsize, qstart,
-							  subject, ssize, sstart,
-							  drd->DynQ, drd->DynT, drd->align, drd->d_path, 
-							  drd->aln_path, drd->result, &drd->swp);
+				
+				int flag = aligner->go(read, qstart, rsize, subject, sstart, ssize, min_align_size);
+				
 				if (flag)
 				{
-					fill_m4record(drd->result, rid + data->reads->start_read_id, 
+					fill_m4record(aligner, rid + data->reads->start_read_id, 
 								  candidates[s].readno, candidates[s].chain, 
 								  rsize, ssize, qstart, sstart, candidates[s].score,
 								  m4v + num_m4);
@@ -700,7 +713,7 @@ pairwise_mapping(PWThreadData* data, int tid)
 		safe_free(read2);
 		safe_free(subject);
 		delete sbk;
-		delete drd;
+		delete aligner;
 		delete[] m4v;
 }
 
@@ -824,6 +837,19 @@ process_one_volume(options_t* options, const int svid, const int evid, volume_na
 {
 	MAXC = options->num_candidates;
 	output_gapped_start_point = options->output_gapped_start_point;
+	min_align_size = options->min_align_size;
+	min_kmer_match = options->min_kmer_match;
+	
+	if (options->tech == TECH_PACBIO) {
+		ddfs_cutoff = ddfs_cutoff_pacbio;
+		min_kmer_dist = 1800;
+	} else if (options->tech == TECH_NANOPORE) {
+		ddfs_cutoff = ddfs_cutoff_nanopore;
+		min_kmer_dist = 400;
+	} else {
+		ERROR("TECH must be either %d or %d", TECH_PACBIO, TECH_NANOPORE);
+	}
+	
 	const char* ref_name = get_vol_name(vn, svid);
 	volume_t* ref = load_volume(ref_name);
 	ref_index* ridx = create_ref_index(ref, kmer_size, options->num_threads);

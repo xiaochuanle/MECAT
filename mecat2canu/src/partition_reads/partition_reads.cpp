@@ -52,6 +52,7 @@ int main(int argc, char* argv[])
             cerr << "file \'" << input << "\' is not a FASTA or FASTQ format file!\n";
             abort();
         }
+        const char first_header_char = line[0];
         getline(in, line);
         int64_t ss = line.size();
         if (s + ss > vs)
@@ -65,7 +66,7 @@ int main(int argc, char* argv[])
         s += ss;
         ++n;
 
-        if (line[0] == '@')
+        if (first_header_char == '@')
         {
             getline(in, line);
             getline(in, line);

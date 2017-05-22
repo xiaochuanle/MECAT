@@ -478,19 +478,12 @@ sub mecat2asmpwConfigure ($$$$) {
 	##### add:
 	##########
     	
-    if (getGlobal("genomeSize")<1000000000){
-	   if($tag eq "obt"){
-	    print F "\$bin/mecat2trimpw -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
-	   }else{
-	   print F "\$bin/mecat2asmpw -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
-	    }
+       if ($tag eq "obt"){
+	print F "\$bin/mecat2trimpw -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
 	}else{
-	   if($tag eq "obt"){
-	      print F "\$bin/mecat2trimpw50 -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
-	    }else{
-	     print F "\$bin/mecat2asmpw50 -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
-	    }
-	  }
+	print F "\$bin/mecat2asmpw -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
+	}
+	
         #print F "\$bin/mecat2asmpw -P$wrk/1-overlapper/blocks -T".getGlobal("${tag}mecat2asmpwThreads")." -S\$jobid -E".(scalar(@blocks)-1)."\n";
 	print F "cat $wrk/1-overlapper/blocks/\$\{jobid\}_*.r >$wrk/1-overlapper/results/\$qry.mecat2asmpw"."\n";
 	print F "rm -f $wrk/1-overlapper/blocks/\$\{jobid\}_*.r";

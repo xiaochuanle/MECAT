@@ -1,7 +1,7 @@
 #ifndef _READS_CORRECTION_CAN_H
 #define _READS_CORRECTION_CAN_H
 
-#include "reads_correction_option.h"
+#include "options.h"
 
 int reads_correction_can(ReadsCorrectionOptions& rco);
 

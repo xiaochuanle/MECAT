@@ -4,9 +4,9 @@
 #include <vector>
 #include <cstring>
 
-#include "../common/dw.h"
+#include "dw.h"
 #include "../common/packed_db.h"
-#include "reads_correction_option.h"
+#include "options.h"
 
 struct CnsTableItem
 {
@@ -29,7 +29,7 @@ struct CnsTableItemCleaner
 	}
 };
 
-#define MAX_CNS_OVLPS 60
+#define MAX_CNS_OVLPS 100
 
 struct MappingRange
 {

@@ -20,7 +20,11 @@ reads_correction_func_m4(void* arg)
         while (j < num_ovlps && overlaps[j].sid == sid) ++j;
         if (j - i < cns_data.rco.min_cov) { i = j; continue; }
         if (overlaps[i].ssize < cns_data.rco.min_size * 0.95) { i = j; continue; }
-		ns_meap_cns::meap_consensus_one_read_m4(&cns_data, sid, i, j);
+		if (cns_data.rco.tech == TECH_PACBIO) {
+			ns_meap_cns::consensus_one_read_m4_pacbio(&cns_data, sid, i, j);
+		} else {
+			ns_meap_cns::consensus_one_read_m4_nanopore(&cns_data, sid, i, j);
+		}
 		if (cns_data.cns_results.size() >= MAX_CNS_RESULTS)
 		{
 			pthread_mutex_lock(&cns_data.out_lock);
@@ -72,7 +76,8 @@ consensus_one_partition_m4(const char* m4_file_name,
 
 int reads_correction_m4(ReadsCorrectionOptions& rco)
 {
-	partition_m4records(rco.m4, rco.min_mapping_ratio, rco.batch_size, rco.min_size);
+    double mapping_ratio = rco.min_mapping_ratio - 0.02;
+	partition_m4records(rco.m4, mapping_ratio, rco.batch_size, rco.min_size);
 	std::string idx_file_name;
 	generate_partition_index_file_name(rco.m4, idx_file_name);
 	std::vector<PartitionFileInfo> partition_file_vec;

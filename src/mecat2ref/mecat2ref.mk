@@ -6,12 +6,12 @@ ifeq "$(strip ${TARGET_DIR})" ""
 endif
 
 TARGET   := mecat2ref
-SOURCES  := mecat2ref.cpp mecat2ref_impl_large.cpp mecat2ref_impl_small.cpp output.cpp
+SOURCES  := mecat2ref.cpp mecat2ref_impl_large.cpp output.cpp aux.cpp
 
 SRC_INCDIRS  := . 
 
 TGT_LDFLAGS := -L${TARGET_DIR}
-TGT_LDLIBS  := 
-TGT_PREREQS := 
+TGT_LDLIBS  := -lmecat
+TGT_PREREQS := libmecat.a
 
 SUBMAKEFILES :=

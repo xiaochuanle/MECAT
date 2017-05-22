@@ -3,9 +3,9 @@
 
 #include <algorithm>
 
-#include "alignment.h"
-#include "defs.h"
-#include "packed_db.h"
+#include "../common/alignment.h"
+#include "../common/defs.h"
+#include "../common/packed_db.h"
 
 namespace ns_banded_sw {
 
@@ -176,11 +176,12 @@ int  dw(const char* query, const int query_size, const int query_start,
         const char* target, const int target_size, const int target_start,
         int* U, int* V, Alignment* align, DPathData2* d_path, 
         PathPoint* aln_path, OutputStore* result, SW_Parameters* swp,
-	    const int min_aln_size = 2000);
+	    double error_rate, const int min_aln_size);
 
 bool GetAlignment(const char* query, const int query_start, const int query_size,
 				  const char* target, const int target_start, const int target_size,
-				  DiffRunningData* drd, M5Record& m5);
+				  DiffRunningData* drd, M5Record& m5, double error_rate, 
+				  const int min_aln_size);
 
 } // end of namespace ns_banded_sw
 

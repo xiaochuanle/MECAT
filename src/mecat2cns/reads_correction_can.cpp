@@ -31,7 +31,11 @@ reads_correction_func_can(void* arg)
         while (j < num_candidates && candidates[j].sid == sid) ++j;
         if (j - i < cns_data.rco.min_cov) { i = j; continue; }
         if (candidates[i].ssize < cns_data.rco.min_size * 0.95) { i = j; continue; }
-		ns_meap_cns::meap_consensus_one_read_can(&cns_data, sid, i, j);
+		if (cns_data.rco.tech == TECH_PACBIO) {
+			ns_meap_cns::consensus_one_read_can_pacbio(&cns_data, sid, i, j);
+		} else {
+			ns_meap_cns::consensus_one_read_can_nanopore(&cns_data, sid, i, j);
+		}
 		if (cns_data.cns_results.size() >= MAX_CNS_RESULTS)
 		{
 			pthread_mutex_lock(&cns_data.out_lock);

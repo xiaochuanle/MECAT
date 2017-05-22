@@ -20,7 +20,7 @@
 #define BC 10
 #define SM 60
 #define SI 61
-#define MAXC 100
+#define MAXC 50
 #define MAXSTR 1000000000
 #define SVM 200000
 #define PLL 500
@@ -637,7 +637,7 @@ void pairwise_mapping(int threadint){
                 }
 //get most mapping canidate location
          cc1=j;
-         for(i=0,index_spr=index_list,index_ss=index_score;i<cc1;i++,index_spr++,index_ss++)if(*index_ss>10){
+         for(i=0,index_spr=index_list,index_ss=index_score;i<cc1;i++,index_spr++,index_ss++)if(*index_ss>8){
 		                     temp_spr=database+*index_spr;
 				     if(temp_spr->score==0)continue;
 		                     s_k=temp_spr->score;
@@ -939,8 +939,8 @@ void pairwise_mapping(int threadint){
 		   if(strand2=='+')fprintf(outfile[threadint],"%d %d %d %d %c %d %d %d %d %c 100 %d %d %d %d 10 %s %s %s\n",indexread[readno].readno,indexread[readno].length,left_loc1-1,right_loc1,strand1,read_name,read_len,left_loc-1,right_loc,strand2,numMatch,numMismatch, numIns,numDel,resultstore->out_store1,matchPattern,resultstore->out_store2);
 		   else fprintf(outfile[threadint],"%d %d %d %d %c %d %d %d %d %c 100 %d %d %d %d 10 %s %s %s\n",indexread[readno].readno,indexread[readno].length,left_loc1-1,right_loc1,strand1,read_name,read_len,read_len-right_loc,read_len-left_loc+1,strand2,numMatch,numMismatch, numIns,numDel,resultstore->out_store1,matchPattern,resultstore->out_store2);
 			*/
-			jscore=2*u_k-numMismatch;
-			jscore=jscore*30*4/(u_k);
+			jscore=numMismatch;
+			jscore=jscore/(4*u_k);
 		   if(FR=='F')fprintf(outfile[threadint],"%d %d %.3f 100 0 %d %d %d 0 %d %d %d\n",indexread[readno].readno,read_name,jscore,left_loc1-1,right_loc1,indexread[readno].length,left_loc-1,right_loc,read_len);
 		   else fprintf(outfile[threadint],"%d %d %.3f 100 0 %d %d %d 1 %d %d %d\n",indexread[readno].readno,read_name,jscore,left_loc1-1,right_loc1,indexread[readno].length,read_len-right_loc,read_len-left_loc+1,read_len);
 			  //fprintf(fid,"%c\t%d\t%d\n",FR,indexread[readno].readno,read_name);

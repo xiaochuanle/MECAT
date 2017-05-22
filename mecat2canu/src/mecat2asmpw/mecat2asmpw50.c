@@ -20,7 +20,7 @@
 #define BC 10
 #define SM 60
 #define SI 61
-#define MAXC 100
+#define MAXC 50
 #define MAXSTR 1000000000
 #define SVM 200000
 #define PLL 500

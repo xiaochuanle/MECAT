@@ -234,7 +234,11 @@ export PATH=/public/users/chenying/smrt_asm/DEXTRACTOR:$PATH
 
 
 
-Using MECAT to assemble a genome involves 4 steps. Here we take assemblying the genome of Ecoli as an example, to go through each step in order. Options of each command will be given in next section. We download the reads [ecoli_filtered.fastq.gz](http://gembox.cbcb.umd.edu/mhap/raw/ecoli_filtered.fastq.gz) from the MHAP website. By decompressing it we obtain `ecoli_filtered.fastq`.
+Using MECAT to assemble a genome involves 4 steps. Here we take assemblying the genome of Ecoli as an example, to go through each step in order. Options of each command will be given in next section. 
+
+## Assemblying Pacbio Data
+
+We download the reads [ecoli_filtered.fastq.gz](http://gembox.cbcb.umd.edu/mhap/raw/ecoli_filtered.fastq.gz) from the MHAP website. By decompressing it we obtain `ecoli_filtered.fastq`.
 
 * Step 1, using `mecat2pw` to detect overlapping candidates
 
@@ -244,8 +248,6 @@ mecat2pw -j 0 -d ecoli_filtered.fastq -o ecoli_filtered.fastq.pm.can -w wrk_dir 
 
 ```
 
-
-
 * Step 2, correct the noisy reads based on their pairwise overlapping candidates.
 
 ```shell
@@ -253,8 +255,6 @@ mecat2pw -j 0 -d ecoli_filtered.fastq -o ecoli_filtered.fastq.pm.can -w wrk_dir 
 mecat2cns -i 0 -t 16 ecoli_filtered.fastq.pm.can ecoli_filtered.fastq corrected_ecoli_filtered.fasta
 
 ```
-
-
 
 * Step 3, extract the longest 25X corrected reads
 
@@ -264,16 +264,49 @@ extract_sequences corrected_ecoli_filtered.fasta corrected_ecoli_25x.fasta 48000
 
 ```
 
+* Step 4, assemble the longest 25X corrected reads using `mecat2cacu`
 
+```shell
+
+mecat2canu -trim-assemble -p ecoli -d ecoli genomeSize=4800000 ErrorRate=0.02 maxMemory=40 maxThreads=16 useGrid=0 Overlapper=mecat2asmpw -pacbio-corrected corrected_ecoli_25x.fasta
+
+```
+
+## Assemblying Nanopore Data
+
+Download [MAP006-PCR-1_2D_pass.fasta](http://nanopore.s3.climb.ac.uk/MAP006-PCR-1_2D_pass.fasta).
+
+* Step 1, using `mecat2pw` to detect overlapping candidates
+
+``` shell
+
+mecat2pw -j 0 -d MAP006-PCR-1_2D_pass.fasta -o candidatex.txt -w wrk_dir -t 16 -x 1
+
+```
+
+* Step 2, correct the noisy reads based on their pairwise overlapping candidates.
+
+```shell
+
+mecat2cns -i 0 -t 16 -x 1 candidates.txt MAP006-PCR-1_2D_pass.fasta corrected_ecoli.fasta
+
+```
+
+* Step 3, extract the longest 25X corrected reads
+
+```shell
+
+extract_sequences corrected_ecoli.fasta corrected_ecoli_25x.fasta 4800000 25
+
+```
 
 * Step 4, assemble the longest 25X corrected reads using `mecat2cacu`
 
 ```shell
 
-mecat2canu -assemble -p ecoli -d ecoli genomeSize=4800000 ErrorRate=0.02 maxMemory=40 maxThreads=16 useGrid=0 Overlapper=mecat2asmpw -pacbio-corrected corrected_ecoli_25x.fasta
+mecat2canu -trim-assemble -p ecoli -d ecoli genomeSize=4800000 ErrorRate=0.06 maxMemory=40 maxThreads=16 useGrid=0 Overlapper=mecat2asmpw -nanopore-corrected corrected_ecoli_25x.fasta
 
 ```
-
 
 
 After step 4, the assembled genome is given in file `ecoli/ecoli.contigs.fasta`. Details of the contigs can be found in file `ecoli/ecoli.layout.tigInfo`.
@@ -307,7 +340,7 @@ The command for running `mecat2pw` is
 
 ```shell
 
-mecat2pw -j [task] -d [fasta/fastq] -w [working folder] -t [# of threads] -o [output] -n [# of candidates] -g [0/1]
+mecat2pw -j [task] -d [fasta/fastq] -w [working folder] -t [# of threads] -o [output] -n [# of candidates] -a [overlap size] -k [# of kmers] -g [0/1] -x [0/1]
 
 ```
 
@@ -325,8 +358,13 @@ The options are:
 
 * `-n [# of candidates]`, number of candidates considered for gapped extension, default=100. Since each chunk  is about 2GB size, number of candidates(NC) should be set by genome size (GS).For GS < 20M, NC should be set as 200; For GS>20M and GS<200M; NC should be set as 100; For GS>200M, NC should be set as 50.
 
+* `-a [overlap size]`, only output overlaps with length >= a. Default: 2000 if x is set to 0, 500 if x is set to 1.
+
+* `-k [# of kmers]`, two blocks between two reads having >= k kmer matches will be considered as a matched block pairt. Default: 4 if x is set to 0, 2 if x is set to 1.
+
 * `-g [0/1]`, output the gapped extension start point (1) or not (0), default=0.
 
+* `-x [0/1]`, sequencing platform: 0 = Pacbio, 1 = Nanopore. Default: 0.
 
 
 ### </a>output format
@@ -399,7 +437,7 @@ Before overlapping is conducted, the reads will be split into several chunks. Ea
 
 ```shell
 
-mecat2ref -d [reads] -r [reference] -w [folder] -t [# of threads] -o [output] -b [# of results] -m [output format]
+mecat2ref -d [reads] -r [reference] -w [folder] -t [# of threads] -o [output] -b [# of results] -m [output format] -x [0/1]
 
 ```
 
@@ -419,7 +457,7 @@ The meanings of each option are as follows:
 
 * `-m [output format]`, output format: 0 = ref, 1 = M4, 2 = SAM, default = 0
 
-
+* `-x [0/1]`, sequencing platform: 0 = Pacbio, 1 = Nanopore. Default: 0.
 
 ### </a>output format
 
@@ -483,17 +521,30 @@ mecat2cns [options] overlaps-file reads output
 
 The options are
 
-* `-i [input type]`, input format, 0 = `can`, 1 = `M4`, default = 1
+* `-x [0/1]`, sequencing platform: 0 = Pacbio, 1 = Nanopore. Default: 0.
 
-* `-t [# of threads]`, number of CPU threads for consensus, default=1
+* `-i [input type]`, input format, 0 = `can`, 1 = `M4
 
-* `-p [batch size]`, batch size the reads will be partitioned, default=100000
+* `-t [# of threads]`, number of CPU threads for consensus
 
-* `-r [ratio]`, minimum mapping ratio, default=0.9
+* `-p [batch size]`, batch size the reads will be partitioned
+
+* `-r [ratio]`, minimum mapping ratio
+
+* `-a [overlap size]`, overlaps with length >= a will be used.
 
 * `-c [coverage]`, minimum coverage, default=6
 
 * `-l [length]`, minimum length of the corrected sequence
+
+If `x` is `0`, then the default values for the other options are:
+```shell
+-i 1 -t 1 -p 100000 -r 0.9 -a 2000 -c 6 -l 5000
+```
+If `x` is `1`, then the default values for the other options are:
+```shell
+-i 1 -t 1 -p 100000 -r 0.4 -a 400 -c 6 -l 2000
+```
 
 
 
@@ -545,11 +596,11 @@ extract_sequences [the input fasta file from mecat2cns] [the output filename] [g
 
 
 
-`mecat2canu` is a modified and more efficient version of the [Canu pipeline](https://github.com/marbl/canu). `mecat2canu` accelerates `canu` by replacing its overlapper `mhap` by `mecat2asmpw`, which is a customized version of `mecat2pw`. The options of `mecat2canu` are the same as `canu` except its overlapper is replaced by `mecat2asmpw`. The command is
+`mecat2canu` is a modified and more efficient version of the [Canu pipeline](https://github.com/marbl/canu). `mecat2canu` accelerates `canu` by replacing its overlapper `mhap` by `mecat2asmpw`, which is a customized version of `mecat2pw`. The options of `mecat2canu` are the same as `canu` except its overlapper is replaced by `mecat2asmpw`. The command for assemblying corrected Pacbio reads is
 
 ``` shell
 
-mecat2canu -d [working-folder] -p [file-prefix] -assemble errorRate=[fraction error] \
+mecat2canu -d [working-folder] -p [file-prefix] -trim-assemble errorRate=[fraction error] \
 
 	-overlapper=mecat2asmpw genomeSize=[genome size] \
 
@@ -558,7 +609,18 @@ mecat2canu -d [working-folder] -p [file-prefix] -assemble errorRate=[fraction er
     -pacbio-corrected reads-name
 
 ```
+The command for assemblying corrected Nanopore reads is
+``` shell
 
+mecat2canu -d [working-folder] -p [file-prefix] -trim-assemble errorRate=[fraction error] \
+
+	-overlapper=mecat2asmpw genomeSize=[genome size] \
+
+    maxMemory=[host memory size] maxThreads=[# of CPU threads] usedGrid=0 \
+
+    -nanopore-corrected reads-name
+
+```
 
 
 After assembling, the results are given in the folder `working-folder`. The assembled genome is given in the file `working-folder/file-prefix.contigs.fasta` and the details of the contigs are given in the file `working-folder/file-prefix.layout.tigInfo`.
@@ -578,6 +640,15 @@ Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi
 * Feng Luo, luofeng@clemson.edu
 
 # <a name="S-update"></a>`Update Information`
+
+Updates in MECAT V1.2 (2017.5.22):
+
+* Add `trimming module` in `mecat2canu` to improve the integrality of the assembly.
+
+* Add supports for Nanopore data.
+
+* Improve the sensitivity of `mecat2ref`.
+
 MECAT v1.1 replaced the old MECAT,some debug were resolved and some new fuctions were added:
 * 1. we added the extracted tools for the raw `H5` format files.
 * 2. some debugs from running mecat2canu were solved

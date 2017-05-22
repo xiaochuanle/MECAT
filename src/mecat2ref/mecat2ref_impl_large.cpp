@@ -1,17 +1,18 @@
 #include "mecat2ref_defs.h"
 #include "output.h"
+#include "aux.h"
+#include "../common/diff_gapalign.h"
+#include "../common/xdrop_gapalign.h"
 
 #include <algorithm>
 using namespace std;
 
 static int MAXC = 0;
-
-typedef struct
-{
-    long loc1,loc2,left1,left2,right1,right2;
-    int score,num1,num2;
-    char chain;
-} candidate_save;
+static int TECH = TECH_PACBIO;
+static int num_output = MAXC;
+static const double ddfs_cutoff_pacbio = 0.25;
+static const double ddfs_cutoff_nanopore = 0.1;
+static double ddfs_cutoff = ddfs_cutoff_pacbio;
 
 static pthread_t *thread;
 static int threadnum=2;
@@ -24,294 +25,6 @@ static int seed_len;
 static char *REFSEQ;
 static char *savework,workpath[300],fastqfile[300];
 static ReadFasta *readinfo;
-
-static int compare_d_path(const void * a, const void * b)
-{
-    const d_path_data2 * arg1 = (d_path_data2 *)a;
-    const d_path_data2 * arg2 = (d_path_data2 *)b;
-    if (arg1->d - arg2->d == 0)
-    {
-        return  arg1->k - arg2->k;
-    }
-    else
-    {
-        return arg1->d - arg2->d;
-    }
-}
-
-static d_path_data2 * get_dpath_idx( int d, int k, unsigned long max_idx, d_path_data2 * base)
-{
-    d_path_data2 d_tmp;
-    d_path_data2 *rtn;
-    d_tmp.d = d;
-    d_tmp.k = k;
-    rtn = (d_path_data2 *)  bsearch( &d_tmp, base, max_idx, sizeof(d_path_data2), compare_d_path);
-    //printf("dp %ld %ld %ld %ld %ld %ld %ld\n", (rtn)->d, (rtn)->k, (rtn)->x1, (rtn)->y1, (rtn)->x2, (rtn)->y2, (rtn)->pre_k);
-    return rtn;
-
-}
-
-struct SCompareDPathData2
-{
-    bool operator()(const d_path_data2& a, const d_path_data2& b)
-    { return (a.d == b.d) ? (a.k < b.k) : (a.d < b.d); }
-};
-
-static int align(char * query_seq, char * target_seq,int band_tolerance,int get_aln_str,alignment * align_rtn,int * V,int * U,d_path_data2 *d_path,path_point * aln_path,deffpoint *deffvalue)
-{
-    int k_offset,d,k, k2,best_m,min_k, new_min_k,max_k, new_max_k,pre_k,x, y,dl;
-    int ck,cd,cx, cy, nx, ny,max_d,band_size,q_len,t_len;
-    unsigned long d_path_idx = 0,max_idx = 0;
-    int aln_path_idx,aln_pos,i,aligned=0;
-    d_path_data2 * d_path_aux;
-    q_len=strlen(query_seq);
-    t_len=strlen(target_seq);
-    max_d = (int) (0.3*(q_len + t_len));
-    band_size = band_tolerance * 2;
-    k_offset = max_d;
-    align_rtn->aln_str_size = 0;
-    align_rtn->aln_q_s = 0;
-    align_rtn->aln_q_e = 0;
-    align_rtn->aln_t_s = 0;
-    align_rtn->aln_t_e = 0;
-    best_m = -1;
-    min_k = 0;
-    max_k = 0;
-    d_path_idx = 0;
-    max_idx = 0;
-    for (d = 0; d < max_d; d ++ )
-    {
-        if(max_k - min_k > band_size)break;
-        for (k = min_k; k <= max_k;  k += 2)
-        {
-            if ( k == min_k || (k != max_k && V[ k - 1 + k_offset ] < V[ k + 1 + k_offset]) )
-            {
-                pre_k = k + 1;
-                x = V[ k + 1 + k_offset];
-            }
-            else
-            {
-                pre_k = k - 1;
-                x = V[ k - 1 + k_offset] + 1;
-            }
-            y = x - k;
-            //search the same string and save the pathway
-            d_path[d_path_idx].d = d;
-            d_path[d_path_idx].k = k;
-            d_path[d_path_idx].x1 = x;
-            d_path[d_path_idx].y1 = y;
-            while ( x < q_len && y < t_len && query_seq[x] == target_seq[y] )
-            {
-                x++;
-                y++;
-            }
-            d_path[d_path_idx].x2 = x;
-            d_path[d_path_idx].y2 = y;
-            d_path[d_path_idx].pre_k = pre_k;
-            d_path_idx ++;
-            V[ k + k_offset ] = x;
-            U[ k + k_offset ] = x + y;
-            if( x + y > best_m)
-            {
-                best_m = x + y;
-                if(d%20==0)
-                {
-                    dl=d/20;
-                    if(dl==0)
-                    {
-                        deffvalue[dl].x=0;
-                        deffvalue[dl].y=0;
-                        deffvalue[dl].max_index=0;
-                        deffvalue[dl].min=0;
-                        deffvalue[dl].k=0;
-                    }
-                    else
-                    {
-                        deffvalue[dl].x=x;
-                        deffvalue[dl].y=best_m;
-                        deffvalue[dl].max_index=d_path_idx;
-                        if(x<y)deffvalue[dl].min=x;
-                        else deffvalue[dl].min=y;
-                        deffvalue[dl].k=k;
-                    }
-                }
-            }
-            if ( x >= q_len || y >= t_len)
-            {
-                aligned = 1;
-                max_idx = d_path_idx;
-                break;
-            }
-        }
-
-        // For banding
-        new_min_k = max_k;
-        new_max_k = min_k;
-        for (k2 = min_k; k2 <= max_k;  k2 += 2)
-        {
-            if (U[ k2 + k_offset] >= best_m - band_tolerance )
-            {
-                if( k2 < new_min_k )new_min_k = k2;
-                if( k2 > new_max_k )new_max_k = k2;
-            }
-        }
-        max_k = new_max_k + 1;
-        min_k = new_min_k - 1;
-        /* if(d%20==0)
-         {
-             dl=d/20;
-             if(dl>1&&(20.0/(deffvalue[dl].x-deffvalue[dl-1].x)>0.5||20.0/((deffvalue[dl].y-deffvalue[dl].x)-(deffvalue[dl-1].y-deffvalue[dl-1].x))>0.5))
-             {
-                 aligned=2;
-                 dl=dl-1;
-             }
-         }*/
-
-
-        if (aligned == 1)
-        {
-            align_rtn->aln_q_e = x;
-            align_rtn->aln_t_e = y;
-            align_rtn->dist = d;
-            align_rtn->aln_str_size = (x + y + d) / 2;
-            align_rtn->aln_q_s = 0;
-            align_rtn->aln_t_s = 0;
-			std::sort(d_path, d_path + max_idx, SCompareDPathData2());
-            if (get_aln_str > 0)
-            {
-                cd = d;
-                ck = k;
-                aln_path_idx = 0;
-                while (cd >= 0 && aln_path_idx < q_len + t_len + 1)
-                {
-                    d_path_aux = (d_path_data2 *) get_dpath_idx( cd, ck, max_idx, d_path);
-                    aln_path[aln_path_idx].x = d_path_aux -> x2;
-                    aln_path[aln_path_idx].y = d_path_aux -> y2;
-                    aln_path_idx ++;
-                    aln_path[aln_path_idx].x = d_path_aux -> x1;
-                    aln_path[aln_path_idx].y = d_path_aux -> y1;
-                    aln_path_idx ++;
-                    ck = d_path_aux -> pre_k;
-                    cd -= 1;
-                }
-                aln_path_idx --;
-                cx = aln_path[aln_path_idx].x;
-                cy = aln_path[aln_path_idx].y;
-                align_rtn->aln_q_s = cx;
-                align_rtn->aln_t_s = cy;
-                aln_pos = 0;
-                while ( aln_path_idx > 0 )
-                {
-                    aln_path_idx --;
-                    nx = aln_path[aln_path_idx].x;
-                    ny = aln_path[aln_path_idx].y;
-                    if (cx == nx && cy == ny)
-                    {
-                        continue;
-                    }
-                    if (nx == cx && ny != cy)  //advance in y
-                    {
-                        for (i = 0; i <  ny - cy; i++)align_rtn->q_aln_str[aln_pos + i] = '-';
-                        for (i = 0; i <  ny - cy; i++)align_rtn->t_aln_str[aln_pos + i] = target_seq[cy + i];
-                        aln_pos += ny - cy;
-                    }
-                    else if (nx != cx && ny == cy)  //advance in x
-                    {
-                        for (i = 0; i <  nx - cx; i++)align_rtn->q_aln_str[aln_pos + i] = query_seq[cx + i];
-                        for (i = 0; i <  nx - cx; i++)align_rtn->t_aln_str[aln_pos + i] = '-';
-                        aln_pos += nx - cx;
-                    }
-                    else
-                    {
-                        for (i = 0; i <  nx - cx; i++)align_rtn->q_aln_str[aln_pos + i] = query_seq[cx + i];
-                        for (i = 0; i <  ny - cy; i++)align_rtn->t_aln_str[aln_pos + i] = target_seq[cy + i];
-                        aln_pos += ny - cy;
-                    }
-                    cx = nx;
-                    cy = ny;
-                }
-                align_rtn->aln_str_size = aln_pos;
-            }
-            break;
-        }
-        else if(aligned == 2)
-        {
-            //get start value
-            align_rtn->aln_q_e = deffvalue[dl].x;
-            align_rtn->aln_t_e = deffvalue[dl].y-deffvalue[dl].x;
-            d=dl*20;
-            max_idx=deffvalue[dl].max_index;
-            k=deffvalue[dl].k;
-            q_len=deffvalue[dl].x;
-            t_len=deffvalue[dl].y-deffvalue[dl].x;
-
-            align_rtn->dist = d;
-            align_rtn->aln_str_size = (x + y + d) / 2;
-            align_rtn->aln_q_s = 0;
-            align_rtn->aln_t_s = 0;
-            qsort(d_path, max_idx, sizeof(d_path_data2), compare_d_path);
-            if (get_aln_str > 0)
-            {
-                cd = d;
-                ck = k;
-                aln_path_idx = 0;
-                while (cd >= 0 && aln_path_idx < q_len + t_len + 1)
-                {
-                    d_path_aux = (d_path_data2 *) get_dpath_idx( cd, ck, max_idx, d_path);
-                    aln_path[aln_path_idx].x = d_path_aux -> x2;
-                    aln_path[aln_path_idx].y = d_path_aux -> y2;
-                    aln_path_idx ++;
-                    aln_path[aln_path_idx].x = d_path_aux -> x1;
-                    aln_path[aln_path_idx].y = d_path_aux -> y1;
-                    aln_path_idx ++;
-                    ck = d_path_aux -> pre_k;
-                    cd -= 1;
-                }
-                aln_path_idx --;
-                cx = aln_path[aln_path_idx].x;
-                cy = aln_path[aln_path_idx].y;
-                align_rtn->aln_q_s = cx;
-                align_rtn->aln_t_s = cy;
-                aln_pos = 0;
-                while ( aln_path_idx > 0 )
-                {
-                    aln_path_idx --;
-                    nx = aln_path[aln_path_idx].x;
-                    ny = aln_path[aln_path_idx].y;
-                    if (cx == nx && cy == ny)
-                    {
-                        continue;
-                    }
-                    if (nx == cx && ny != cy)  //advance in y
-                    {
-                        for (i = 0; i <  ny - cy; i++)align_rtn->q_aln_str[aln_pos + i] = '-';
-                        for (i = 0; i <  ny - cy; i++)align_rtn->t_aln_str[aln_pos + i] = target_seq[cy + i];
-                        aln_pos += ny - cy;
-                    }
-                    else if (nx != cx && ny == cy)  //advance in x
-                    {
-                        for (i = 0; i <  nx - cx; i++)align_rtn->q_aln_str[aln_pos + i] = query_seq[cx + i];
-                        for (i = 0; i <  nx - cx; i++)align_rtn->t_aln_str[aln_pos + i] = '-';
-                        aln_pos += nx - cx;
-                    }
-                    else
-                    {
-                        for (i = 0; i <  nx - cx; i++)align_rtn->q_aln_str[aln_pos + i] = query_seq[cx + i];
-                        for (i = 0; i <  ny - cy; i++)align_rtn->t_aln_str[aln_pos + i] = target_seq[cy + i];
-                        aln_pos += ny - cy;
-                    }
-                    cx = nx;
-                    cy = ny;
-                }
-                align_rtn->aln_str_size = aln_pos;
-            }
-            break;
-        }
-    }
-    if(align_rtn->aln_q_e==q_len||align_rtn->aln_t_e==t_len)return(aligned);
-    else return(0);
-
-}
 
 static long get_file_size(const char *path)
 {
@@ -376,92 +89,6 @@ static int transnum_buchang(char *seqm,int *value,int *endn,int len_str,int read
     return(num);
 }
 
-static void string_check(char *seq1,char *seq2,char *str1,char *str2)
-{
-    //char seq1[500]="GACCGCCGGACAGCCCACAAACACAACAGCATTTGGCGTATTTCCCGTCAAAGGACTGCGAGTGGGACCGCGCACCGATTTATAGAGTAACGGTGGGACTTACCCCCGACGACTAGAGG";
-    //char seq2[500]="GACCGCCGGACAGGCCACAAACACAAATCCGCGAGGCGTATTCCTGTCAAAGGGACTACGGCCCAGTGGGACGCCGCACGACTATATAGTAGTAAGGTGTGCTTTACCCGACGCCCTAGAGG";
-    //char str1[700]="GACCGCCGGACAG-CCCACAAACACAACA---GC-ATTTGGCGTATTTCCC-GTCAAAGG-ACTG-CG----AGTGGGACCGC-GCACCGA-T-TTATAG-AGTAACGGTG-GGACTT-ACCCCCGACGAC--TAGAGG";
-    //char str2[700]="GACCGCCGGACAGGCC-ACAAACACAA-ATCCGCGA---GGCGTATT-CC-TGTCAAAGGGACT-ACGGCCCAGTGGGAC-GCCGCAC-GACTAT-ATAGTAGTAA-GGTGTG--CTTTACCC--GACG-CCCTAGAGG";
-    int len1,len2,slen1,loc1,loc2,k,s,j;
-    len1=strlen(seq1)-1;
-    len2=strlen(seq2)-1;
-    for(slen1=strlen(str1)-1,loc1=0,loc2=0; slen1>-1; slen1--)
-    {
-        if(str1[slen1]!='-')loc1++;
-        else if(loc1<=len1&&loc2<=len2&&seq1[len1-loc1]==seq2[len2-loc2])
-        {
-            k=1;
-            while(loc1+k<=len1&&loc2+k<=len2&&seq1[len1-loc1-k]==seq2[len2-loc2-k])k++;
-            s=0;
-            j=slen1;
-            while(s<k)
-            {
-                if(str1[j]!='-')
-                {
-                    str1[j]='-';
-                    s++;
-                }
-                j--;
-            }
-            s=0;
-            j=slen1;
-            while(s<k)
-            {
-                if(str2[j]!='-')
-                {
-                    str2[j]='-';
-                    s++;
-                }
-                j--;
-            }
-            for(s=0,j=slen1; s<k; j--)
-            {
-                str1[j]=seq1[len1-loc1-s];
-                str2[j]=seq2[len2-loc2-s];
-                s++;
-            }
-            if(str1[slen1]!='-')loc1++;
-        }
-        if(str2[slen1]!='-')loc2++;
-        else if(loc1-1<=len1&&loc2<=len2&&seq1[len1-loc1+1]==seq2[len2-loc2])
-        {
-            k=1;
-            while(loc1+k-1<=len1&&loc2+k<=len2&&seq1[len1-loc1+1-k]==seq2[len2-loc2-k])k++;
-            s=0;
-            j=slen1;
-            while(s<k)
-            {
-                if(str1[j]!='-')
-                {
-                    str1[j]='-';
-                    s++;
-                }
-                j--;
-            }
-            s=0;
-            j=slen1;
-            while(s<k)
-            {
-                if(str2[j]!='-')
-                {
-                    str2[j]='-';
-                    s++;
-                }
-                j--;
-            }
-            for(s=0,j=slen1; s<k; j--)
-            {
-                str1[j]=seq1[len1-loc1+1-s];
-                str2[j]=seq2[len2-loc2-s];
-                s++;
-            }
-            if(str2[slen1]!='-')loc2++;
-        }
-
-
-    }
-}
-
 static void insert_loc(struct Back_List *spr,int loc,int seedn,float len)
 {
     int list_loc[SI],list_score[SI],list_seed[SI],i,j,minval,mini;
@@ -476,7 +103,7 @@ static void insert_loc(struct Back_List *spr,int loc,int seedn,float len)
     list_score[SM]=0;
     mini=-1;
     minval=10000;
-    for(i=0; i<SM; i++)for(j=i+1; j<11; j++)if(list_seed[j]-list_seed[i]>0&&list_loc[j]-list_loc[i]>0&&fabs((list_loc[j]-list_loc[i])/((list_seed[j]-list_seed[i])*len)-1.0)<0.3)
+    for(i=0; i<SM; i++)for(j=i+1; j<SI; j++)if(list_seed[j]-list_seed[i]>0&&list_loc[j]-list_loc[i]>0&&fabs((list_loc[j]-list_loc[i])/((list_seed[j]-list_seed[i])*len)-1.0)<ddfs_cutoff)
             {
                 list_score[i]++;
                 list_score[j]++;
@@ -500,85 +127,6 @@ static void insert_loc(struct Back_List *spr,int loc,int seedn,float len)
         }
         spr->score--;
     }
-}
-
-static int find_location(int *t_loc,int *t_seedn,int *t_score,long *loc,int k,int *rep_loc,float len,int read_len1)
-{
-    int i,j,maxval=0,maxi,rep=0,lasti=0;
-    for(i=0; i<k; i++)t_score[i]=0;
-    for(i=0; i<k-1; i++)for(j=i+1; j<k; j++)if(t_seedn[j]-t_seedn[i]>0&&t_loc[j]-t_loc[i]>0&&t_loc[j]-t_loc[i]<read_len1&&fabs((t_loc[j]-t_loc[i])/((t_seedn[j]-t_seedn[i])*len)-1)<0.25)
-            {
-                t_score[i]++;
-                t_score[j]++;
-            }
-
-    for(i=0; i<k; i++)
-    {
-        if(maxval<t_score[i])
-        {
-            maxval=t_score[i];
-            maxi=i;
-            rep=0;
-        }
-        else if(maxval==t_score[i])
-        {
-            rep++;
-            lasti=i;
-        }
-    }
-    for(i=0; i<4; i++)loc[i]=0;
-    if(maxval>=5&&rep==maxval)
-    {
-        loc[0]=t_loc[maxi],loc[1]=t_seedn[maxi];
-        *rep_loc=maxi;
-        loc[2]=t_loc[lasti],loc[3]=t_seedn[lasti];
-        return(1);
-    }
-    else if(maxval>=5&&rep!=maxval)
-    {
-        for(j=0; j<maxi; j++)if(t_seedn[maxi]-t_seedn[j]>0&&t_loc[maxi]-t_loc[j]>0&&t_loc[maxi]-t_loc[j]<read_len1&&fabs((t_loc[maxi]-t_loc[j])/((t_seedn[maxi]-t_seedn[j])*len)-1)<0.20)
-            {
-                if(loc[0]==0)
-                {
-                    loc[0]=t_loc[j];
-                    loc[1]=t_seedn[j];
-                    *rep_loc=j;
-                }
-                else
-                {
-                    loc[2]=t_loc[j];
-                    loc[3]=t_seedn[j];
-                }
-            }
-        j=maxi;
-        if(loc[0]==0)
-        {
-            loc[0]=t_loc[j];
-            loc[1]=t_seedn[j];
-            *rep_loc=j;
-        }
-        else
-        {
-            loc[2]=t_loc[j];
-            loc[3]=t_seedn[j];
-        }
-        for(j=maxi+1; j<k; j++)if(t_seedn[j]-t_seedn[maxi]>0&&t_loc[j]-t_loc[maxi]>0&&t_loc[j]-t_loc[maxi]<=read_len1&&fabs((t_loc[j]-t_loc[maxi])/((t_seedn[j]-t_seedn[maxi])*len)-1)<0.20)
-            {
-                if(loc[0]==0)
-                {
-                    loc[0]=t_loc[j];
-                    loc[1]=t_seedn[j];
-                    *rep_loc=j;
-                }
-                else
-                {
-                    loc[2]=t_loc[j];
-                    loc[3]=t_seedn[j];
-                }
-            }
-        return(1);
-    }
-    else return(0);
 }
 
 
@@ -725,43 +273,66 @@ static void creat_ref_index(char *fastafile)
 
 static void reference_mapping(int threadint)
 {
-    int eit;
     int cleave_num,read_len;
-    int mvalue[20000],loc_flag,flag_end;
+    int mvalue[20000],flag_end;
     long *leadarray,u_k,s_k,loc;
     int count1=0,i,j,k,templong,read_name;
     struct Back_List *database,*temp_spr,*temp_spr1;
-    int repeat_loc,*index_list,*index_spr;
+    int repeat_loc = 0,*index_list,*index_spr;
     long location_loc[4],left_length1,right_length1,left_length2,right_length2,loc_list,start_loc;
     short int *index_score,*index_ss;
     int temp_list[200],temp_seedn[200],temp_score[200];
-    int sci=0,localnum,read_i,read_end,fileid;
+    int localnum,read_i,read_end,fileid;
     int endnum,ii;
-    char *seq,*onedata,onedata1[RM],onedata2[RM],seq1[2500],seq2[2500],*seq_pr1,*seq_pr2,FR;
+    char *seq,*onedata,onedata1[RM],onedata2[RM],FR;
     int cc1,canidatenum,loc_seed;
-    long left_loc,left_loc1,right_loc=0,right_loc1;
     int num1,num2,BC;
     int low,high,mid,seedcount;
-    alignment strvalue;
-    int longstr1[2000],longstr2[2000],align_flag;
-    d_path_data2 *d_path;
     candidate_save canidate_loc[MAXC],canidate_temp;
-    path_point aln_path[5000];
-    output_store *resultstore;
-    deffpoint deffvalue[100];
     seq=REFSEQ;
     j=seqcount/ZV+5;
-    index_list=(int *)malloc(j*sizeof(int));
-    index_score=(short int *)malloc(j*sizeof(short int));
-    database=(struct Back_List *)malloc(j*sizeof(struct Back_List));
-    for(i=0,temp_spr=database; i<j; temp_spr++,i++)
-    {
-        temp_spr->score=0;
-        temp_spr->index=-1;
-    }
-    d_path=(d_path_data2*)malloc(600*700*2*sizeof(d_path_data2));
-    resultstore=(output_store *)malloc(1*sizeof(output_store));
-	TempResult result;
+	
+	int* fwd_index_list = (int*)malloc(sizeof(int) * j);
+	short* fwd_index_score = (short*)malloc(sizeof(short) * j);
+	Back_List* fwd_database = (Back_List*)malloc(sizeof(Back_List) * j);
+	int* rev_index_list = (int*)malloc(sizeof(int) * j);
+	short* rev_index_score = (short*)malloc(sizeof(short) * j);
+	Back_List* rev_database = (Back_List*)malloc(sizeof(Back_List) * j);
+	for (i = 0; i < j; ++i) {
+		fwd_database[i].score = 0;
+		fwd_database[i].score2 = 0;
+		fwd_database[i].index = -1;
+		rev_database[i].score = 0;
+		rev_database[i].score2 = 0;
+		rev_database[i].index = -1;
+	}
+	int fnblk, rnblk;
+	int* pnblk;
+	AlignInfo alns[MAXC + 6];
+	int naln;
+	TempResult results[MAXC + 6];
+	int nresults;
+	long aln_bytes = 1;
+	aln_bytes = aln_bytes * 2 * (MAXC + 6) * MAX_SEQ_SIZE;
+	char* aln_seqs = new char[aln_bytes];
+	u_k = 0;
+	for (int i = 0; i < MAXC + 6; ++i) {
+		results[i].qmap = aln_seqs + u_k;
+		u_k += MAX_SEQ_SIZE;
+		results[i].smap = aln_seqs + u_k;
+		u_k += MAX_SEQ_SIZE;
+	}
+	
+	vector<char> qstr;
+	vector<char> tstr;
+	GapAligner* aligner = NULL;
+	if (TECH == TECH_PACBIO) {
+		aligner = new DiffAligner(0);
+	} else if (TECH == TECH_NANOPORE) {
+		aligner = new XdropAligner(0);
+	} else {
+		ERROR("TECH must be either %d or %d", TECH_PACBIO, TECH_NANOPORE);
+	}
 
     fileid=1;
     while(fileid)
@@ -782,18 +353,24 @@ static void reference_mapping(int threadint)
             read_name=readinfo[read_i].readno;
             read_len=readinfo[read_i].readlen;
             strcpy(onedata1,readinfo[read_i].seqloc);
-            //printf("%d %d\n",read_name,read_len);
 
             canidatenum=0;
-            loc_flag=0;
             for(ii=1; ii<=2; ii++)
             {
                 read_len=strlen(onedata1);
                 BC=5+(read_len/1000);
                 if(BC>20)BC=20;
-                if(ii==1)onedata=onedata1;
-                else if(ii==2)
-                {
+                if(ii==1) {
+					onedata=onedata1;
+					index_list = fwd_index_list;
+					index_score = fwd_index_score;
+					database = fwd_database;
+					pnblk = &fnblk;
+				} else if(ii==2){
+					index_list = rev_index_list;
+					index_score = rev_index_score;
+					database = rev_database;
+					pnblk = &rnblk;
                     strcpy(onedata2,onedata1);
                     onedata=onedata2;
                     for(j=read_len-1,i=0; j>i; j--,i++)
@@ -867,13 +444,14 @@ static void reference_mapping(int threadint)
                                         *(index_ss++)=s_k;
                                         temp_spr->index=j;
                                         j++;
-                                    }
-                                    else index_score[temp_spr->index]=s_k;
+                                    } else index_score[temp_spr->index]=s_k;
+									temp_spr->score2 = temp_spr->score;
                                 }
                                 temp_spr->seednum=k+1;
                             }
                         }
                     }
+				*pnblk = j;
                 cc1=j;
                 for(i=0,index_spr=index_list,index_ss=index_score; i<cc1; i++,index_spr++,index_ss++)if(*index_ss>6)
                     {
@@ -913,7 +491,7 @@ static void reference_mapping(int threadint)
                                 u_k++;
                             }
                         }
-                        flag_end=find_location(temp_list,temp_seedn,temp_score,location_loc,u_k,&repeat_loc,BC,read_len);
+                        flag_end=find_location(temp_list,temp_seedn,temp_score,location_loc,u_k,&repeat_loc,BC,read_len, ddfs_cutoff);
                         if(flag_end==0)continue;
                         if(temp_score[repeat_loc]<6)continue;
                         canidate_temp.score=temp_score[repeat_loc];
@@ -943,23 +521,25 @@ static void reference_mapping(int threadint)
                         for(u_k=*index_spr-2,k=num1/ZV,temp_spr1=temp_spr-2; u_k>=0&&k>=0; temp_spr1--,k--,u_k--)if(temp_spr1->score>0)
                             {
                                 start_loc=u_k*ZVL;
-                                for(j=0,s_k=0; j<temp_spr1->score; j++)if(fabs((loc_list-start_loc-temp_spr1->loczhi[j])/((loc_seed-temp_spr1->seedno[j])*BC*1.0)-1.0)<0.2)
+								int scnt = min((int)temp_spr1->score, SM);
+                                for(j=0,s_k=0; j < scnt; j++)if(fabs((loc_list-start_loc-temp_spr1->loczhi[j])/((loc_seed-temp_spr1->seedno[j])*BC*1.0)-1.0)<ddfs_cutoff)
                                     {
                                         seedcount++;
                                         s_k++;
                                     }
-                                if(s_k*1.0/temp_spr1->score>0.4)temp_spr1->score=0;
+                                if(s_k*1.0/scnt>0.4)temp_spr1->score=0;
                             }
                         //find all right seed
                         for(u_k=*index_spr+1,k=num2/ZV,temp_spr1=temp_spr+1; k>0; temp_spr1++,k--,u_k++)if(temp_spr1->score>0)
                             {
                                 start_loc=u_k*ZVL;
-                                for(j=0,s_k=0; j<temp_spr1->score; j++)if(fabs((start_loc+temp_spr1->loczhi[j]-loc_list)/((temp_spr1->seedno[j]-loc_seed)*BC*1.0)-1.0)<0.2)
+								int scnt = min((int)temp_spr1->score, SM);
+                                for(j=0,s_k=0; j < scnt; j++)if(fabs((start_loc+temp_spr1->loczhi[j]-loc_list)/((temp_spr1->seedno[j]-loc_seed)*BC*1.0)-1.0)<ddfs_cutoff)
                                     {
                                         seedcount++;
                                         s_k++;
                                     }
-                                if(s_k*1.0/temp_spr1->score>0.4)temp_spr1->score=0;
+                                if(s_k*1.0/scnt>0.4)temp_spr1->score=0;
                             }
                         canidate_temp.score=canidate_temp.score+seedcount;
                         if(ii==1)canidate_temp.chain='F';
@@ -979,309 +559,80 @@ static void reference_mapping(int threadint)
                         if(canidatenum<MAXC)canidatenum++;
                         else canidatenum=MAXC;
                     }
-                for(i=0,index_spr=index_list; i<cc1; i++,index_spr++)
-                {
-                    database[*index_spr].score=0;
-                    database[*index_spr].index=-1;
-                }
             }
 
-            loc_flag=0;
+			naln = 0;
+			nresults = 0;
             for(i=0; i<canidatenum; i++)
             {
+				extend_candidate(canidate_loc[i], 
+								 aligner, 
+								 seq, 
+								 seqcount,
+								 onedata1, 
+								 onedata2, 
+								 qstr, 
+								 tstr, 
+								 read_name, 
+								 read_len, 
+								 alns, 
+								 &naln,
+								 results,
+								 nresults);
+            }
+			
+			rescue_clipped_align(alns, 
+								  naln, 
+								  results,
+								  nresults,
+								  aligner, 
+								  seq, 
+								  seqcount,
+								  onedata1, 
+								  onedata2, 
+								  qstr, 
+								  tstr, 
+								  read_name, 
+								  read_len, 
+								  ZV, 
+								  BC, 
+								  fwd_database, 
+								  rev_database,
+								  ddfs_cutoff);
+			
+			output_results(alns, naln, results, nresults, num_output, outfile[threadint]);
+			
+			for (int t = 0; t < fnblk; ++t) {
+				int bid = fwd_index_list[t];
+				fwd_database[bid].score = 0;
+				fwd_database[bid].score2 = 0;
+				fwd_database[bid].index = -1;
+			}
+			for (int t = 0; t < rnblk; ++t) {
+				int bid = rev_index_list[t];
+				rev_database[bid].score = 0;
+				rev_database[bid].score2 = 0;
+				rev_database[bid].index = -1;
+			}
 
-                location_loc[0]=canidate_loc[i].loc1;
-                location_loc[1]=canidate_loc[i].loc2;
-                num1=canidate_loc[i].num1;
-                num2=canidate_loc[i].num2;
-                left_length1=canidate_loc[i].left1;
-                left_length2=canidate_loc[i].left2;
-                right_length1=canidate_loc[i].right1;
-                right_length2=canidate_loc[i].right2;
-                if(canidate_loc[i].chain=='F')onedata=onedata1;
-                else if(canidate_loc[i].chain=='R')onedata=onedata2;
-                //left alignment search
-                seq_pr1=seq+location_loc[0]+seed_len-2;
-                seq_pr2=onedata+location_loc[1]+seed_len-1;
-                left_loc1=0;
-                left_loc=0;
-                resultstore->left_store1[0]='\0';
-                resultstore->left_store2[0]='\0';
-                flag_end=1;
-                while(flag_end)
-                {
-                    if(num1>600)
-                    {
-                        for(s_k=0; s_k<DN; s_k++,seq_pr1--,seq_pr2--)
-                        {
-                            seq1[s_k]=*seq_pr1;
-                            seq2[s_k]=*seq_pr2;
-                        }
-                        seq1[s_k]='\0';
-                        seq2[s_k]='\0';
-                    }
-                    else
-                    {
-                        flag_end=0;
-                        for(s_k=0; s_k<num1; s_k++,seq_pr1--,seq_pr2--)
-                        {
-                            seq1[s_k]=*seq_pr1;
-                            seq2[s_k]=*seq_pr2;
-                        }
-                        seq1[s_k]='\0';
-                        seq2[s_k]='\0';
-                    }
-                    for(loc=0; loc<2000; loc++)
-                    {
-                        longstr1[loc]=0;
-                        longstr2[loc]=0;
-                    }
-                    align_flag=align(seq1,seq2,0.3*s_k,400,&strvalue,longstr1,longstr2,d_path,aln_path,deffvalue);
-                    if(align_flag==1)
-                    {
-                        strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                        strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                        for(k=strvalue.aln_str_size-1,loc=0,sci=0,eit=0; k>-1&&eit<6; k--)
-                        {
-                            if(strvalue.q_aln_str[k]!='-')loc++;
-                            if(strvalue.t_aln_str[k]!='-')sci++;
-                            if(strvalue.q_aln_str[k]==strvalue.t_aln_str[k])eit++;
-                            else eit=0;
-                        }
-                        if(flag_end==1)
-                        {
-                            loc=DN-strvalue.aln_q_e+loc;
-                            sci=DN-strvalue.aln_t_e+sci;
-                            if(loc==DN)align_flag=0;
-                            seq_pr1=seq_pr1+loc;
-                            seq_pr2=seq_pr2+sci;
-                            strvalue.q_aln_str[k+1]='\0';
-                            strvalue.t_aln_str[k+1]='\0';
-                            left_loc1=left_loc1+DN-loc;
-                            left_loc=left_loc+DN-sci;
-                        }
-                        else
-                        {
-                            loc=num1-strvalue.aln_q_e;
-                            sci=num1-strvalue.aln_t_e;
-                            if(loc==num1)align_flag=0;
-                            left_loc1=left_loc1+num1-loc;
-                            left_loc=left_loc+num1-sci;
-                            seq_pr1=seq_pr1+loc+1;
-                            seq_pr2=seq_pr2+sci+1;
-                            //strvalue.q_aln_str[k+7]='\0';
-                            //strvalue.t_aln_str[k+7]='\0';
-                        }
-                        strcat(resultstore->left_store1,strvalue.q_aln_str);
-                        strcat(resultstore->left_store2,strvalue.t_aln_str);
-                        if(left_length1-left_loc1>=left_length2-left_loc)num1=left_length2-left_loc;
-                        else num1=left_length1-left_loc1;
-                    }
-                    else if(align_flag==2)
-                    {
-                        strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                        strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                        loc=DN-strvalue.aln_q_e;
-                        sci=DN-strvalue.aln_t_e;
-                        if(loc==DN)align_flag=0;
-                        seq_pr1=seq_pr1+loc;
-                        seq_pr2=seq_pr2+sci;
-                        //strvalue.q_aln_str[k+1]='\0';
-                        // strvalue.t_aln_str[k+1]='\0';
-                        left_loc1=left_loc1+DN-loc;
-                        left_loc=left_loc+DN-sci;
-                        strcat(resultstore->left_store1,strvalue.q_aln_str);
-                        strcat(resultstore->left_store2,strvalue.t_aln_str);
-                    }
-                    if(align_flag!=1)break;
-                }
-
-                //right alignment search
-                right_loc1=0;
-                right_loc=0;
-                seq_pr1=seq+location_loc[0]-1;
-                seq_pr2=onedata+location_loc[1];
-                resultstore->right_store1[0]='\0';
-                resultstore->right_store2[0]='\0';
-                flag_end=1;
-                while(flag_end)
-                {
-                    if(num2>600)
-                    {
-                        for(s_k=0; s_k<DN; s_k++,seq_pr1++,seq_pr2++)
-                        {
-                            seq1[s_k]=*seq_pr1;
-                            seq2[s_k]=*seq_pr2;
-                        }
-                        seq1[s_k]='\0';
-                        seq2[s_k]='\0';
-                    }
-                    else
-                    {
-                        flag_end=0;
-                        for(s_k=0; s_k<num2; s_k++,seq_pr1++,seq_pr2++)
-                        {
-                            seq1[s_k]=*seq_pr1;
-                            seq2[s_k]=*seq_pr2;
-                        }
-                        seq1[s_k]='\0';
-                        seq2[s_k]='\0';
-                    }
-                    for(loc=0; loc<2000; loc++)
-                    {
-                        longstr1[loc]=0;
-                        longstr2[loc]=0;
-                    }
-                    align_flag=align(seq1,seq2,0.3*s_k,400,&strvalue,longstr1,longstr2,d_path,aln_path,deffvalue);
-                    if(align_flag==1)
-                    {
-                        strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                        strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                        for(k=strvalue.aln_str_size-1,loc=0,sci=0,eit=0; k>-1&&eit<6; k--)
-                        {
-                            if(strvalue.q_aln_str[k]!='-')loc++;
-                            if(strvalue.t_aln_str[k]!='-')sci++;
-                            if(strvalue.q_aln_str[k]==strvalue.t_aln_str[k])eit++;
-                            else eit=0;
-                        }
-                        if(flag_end==1)
-                        {
-                            loc=DN-strvalue.aln_q_e+loc;
-                            sci=DN-strvalue.aln_t_e+sci;
-                            if(loc==DN)align_flag=0;
-                            seq_pr1=seq_pr1-loc;
-                            seq_pr2=seq_pr2-sci;
-                            strvalue.q_aln_str[k+1]='\0';
-                            strvalue.t_aln_str[k+1]='\0';
-                            right_loc1=right_loc1+DN-loc;
-                            right_loc=right_loc+DN-sci;
-                        }
-                        else
-                        {
-                            loc=num2-strvalue.aln_q_e;
-                            sci=num2-strvalue.aln_t_e;
-                            if(loc==num2)align_flag=0;
-                            right_loc1=right_loc1+num2-loc;
-                            right_loc=right_loc+num2-sci;
-                            seq_pr1=seq_pr1-loc;
-                            seq_pr2=seq_pr2-sci;
-                            //strvalue.q_aln_str[k+7]='\0';
-                            //strvalue.t_aln_str[k+7]='\0';
-                        }
-                        strcat(resultstore->right_store1,strvalue.q_aln_str);
-                        strcat(resultstore->right_store2,strvalue.t_aln_str);
-                        if(right_length1-right_loc1>=right_length2-right_loc)num2=right_length2-right_loc;
-                        else num2=right_length1-right_loc1;
-                    }
-                    else if(align_flag==2)
-                    {
-                        strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                        strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                        loc=DN-strvalue.aln_q_e;
-                        sci=DN-strvalue.aln_t_e;
-                        if(loc==DN)align_flag=0;
-                        seq_pr1=seq_pr1-loc;
-                        seq_pr2=seq_pr2-sci;;
-                        right_loc1=right_loc1+DN-loc;
-                        right_loc=right_loc+DN-sci;
-                        strcat(resultstore->right_store1,strvalue.q_aln_str);
-                        strcat(resultstore->right_store2,strvalue.t_aln_str);
-                    }
-                    if(align_flag!=1)break;
-                }
-
-                s_k=strlen(resultstore->left_store1);
-                for(j=0,loc=0,k=0; j<s_k; j++)
-                {
-                    if(resultstore->left_store1[j]!='-')
-                    {
-                        resultstore->out_store1[loc]=resultstore->left_store1[j];
-                        loc++;
-                    }
-                    if(resultstore->left_store2[j]!='-')
-                    {
-                        resultstore->out_store2[k]=resultstore->left_store2[j];
-                        k++;
-                    }
-                }
-                resultstore->out_store1[loc]='\0';
-                resultstore->out_store2[k]='\0';
-                //printf("%s\n%s\n%s\n%s\n",resultstore->out_store1,resultstore->out_store2,resultstore->left_store1,resultstore->left_store2);
-                string_check(resultstore->out_store1,resultstore->out_store2,resultstore->left_store1,resultstore->left_store2);
-                //printf("%s\n%s\n",resultstore->left_store1,resultstore->left_store2);
-
-                //output result
-                u_k=strlen(resultstore->left_store1);
-                for(j=u_k-1,loc=0,eit=0,k=0; j>-1; j--,k++)
-                {
-                    FR=resultstore->left_store1[j];
-                    resultstore->out_store1[k]=FR;
-                    if(FR!='-')loc++;
-                    FR=resultstore->left_store2[j];
-                    resultstore->out_store2[k]=FR;
-                    if(FR!='-')eit++;
-                }
-                resultstore->out_store1[k]='\0';
-                resultstore->out_store2[k]='\0';
-                //resultstore->out_store1[k-seed_len]='\0';resultstore->out_store2[k-seed_len]='\0';
-                if(u_k>0)
-                {
-                    left_loc1=location_loc[0]+seed_len-loc;
-                    left_loc=location_loc[1]+seed_len-eit+1;
-                }
-                else
-                {
-                    left_loc1=location_loc[0];
-                    left_loc=location_loc[1]+1;
-                }
-
-                s_k=strlen(resultstore->right_store1);
-                for(k=0,loc=0,eit=0; k<s_k; k++)
-                {
-                    if(resultstore->right_store1[k]!='-')loc++;
-                    if(resultstore->right_store2[k]!='-')eit++;
-                }
-                if(s_k>0)
-                {
-                    right_loc1=location_loc[0]+loc-1;
-                    right_loc=location_loc[1]+eit;
-                }
-                else
-                {
-                    right_loc1=location_loc[0]+seed_len-1;
-                    right_loc=location_loc[1]+seed_len;
-                }
-                if(s_k>=seed_len&&u_k>=seed_len)
-                {
-                    strcat(resultstore->out_store1,resultstore->right_store1+seed_len);
-                    strcat(resultstore->out_store2,resultstore->right_store2+seed_len);
-                }
-                else if(u_k<seed_len)
-                {
-                    strcpy(resultstore->out_store1,resultstore->right_store1);
-                    strcpy(resultstore->out_store2,resultstore->right_store2);
-                }
-                FR=canidate_loc[i].chain;
-                if(strlen(resultstore->out_store1)>=1000)
-                {
-                    set_temp_result(read_name, FR, canidate_loc[i].score, left_loc, 
-									right_loc, read_len, left_loc1, right_loc1, 
-									resultstore->out_store2,resultstore->out_store1, &result);
-					output_temp_result(&result, outfile[threadint]);
-					loc_flag=1;
-                }
-            }//search result
-            //when the above search fail,the program should be the following accuracy search
-            if(loc_flag==0)
+			if (naln == 0)
             {
                 canidatenum=0;
                 for(ii=1; ii<=2; ii++)
                 {
                     read_len=strlen(onedata1);
                     BC=5;
-                    if(ii==1)onedata=onedata1;
-                    else if(ii==2)
-                    {
+                    if(ii==1) {
+						onedata=onedata1;
+						index_list = fwd_index_list;
+						index_score = fwd_index_score;
+						database = fwd_database;
+						pnblk = &fnblk;
+					} else if(ii==2) {
+						index_list = rev_index_list;
+						index_score = rev_index_score;
+						database = rev_database;
+						pnblk = &rnblk;
                         strcpy(onedata2,onedata1);
                         onedata=onedata2;
                         for(j=read_len-1,i=0; j>i; j--,i++)
@@ -1319,7 +670,6 @@ static void reference_mapping(int threadint)
                         }
                     }
 
-                    loc_flag=0;
                     endnum=0;
                     read_len=strlen(onedata);
                     cleave_num=transnum_buchang(onedata,mvalue,&endnum,read_len,seed_len,BC);
@@ -1357,13 +707,14 @@ static void reference_mapping(int threadint)
                                             *(index_ss++)=s_k;
                                             temp_spr->index=j;
                                             j++;
-                                        }
-                                        else index_score[temp_spr->index]=s_k;
+                                        } else index_score[temp_spr->index]=s_k;
+										temp_spr->score2 = temp_spr->score;
                                     }
                                     temp_spr->seednum=k+1;
                                 }
                             }
                         }
+					*pnblk = j;
                     cc1=j;
                     for(i=0,index_spr=index_list,index_ss=index_score; i<cc1; i++,index_spr++,index_ss++)if(*index_ss>4)
                         {
@@ -1403,7 +754,7 @@ static void reference_mapping(int threadint)
                                     u_k++;
                                 }
                             }
-                            flag_end=find_location(temp_list,temp_seedn,temp_score,location_loc,u_k,&repeat_loc,BC,read_len);
+                            flag_end=find_location(temp_list,temp_seedn,temp_score,location_loc,u_k,&repeat_loc,BC,read_len, ddfs_cutoff);
                             if(flag_end==0)continue;
                             if(temp_score[repeat_loc]<6)continue;
                             canidate_temp.score=temp_score[repeat_loc];
@@ -1433,23 +784,25 @@ static void reference_mapping(int threadint)
                             for(u_k=*index_spr-2,k=num1/ZVS,temp_spr1=temp_spr-2; u_k>=0&&k>=0; temp_spr1--,k--,u_k--)if(temp_spr1->score>0)
                                 {
                                     start_loc=u_k*ZVSL;
-                                    for(j=0,s_k=0; j<temp_spr1->score; j++)if(fabs((loc_list-start_loc-temp_spr1->loczhi[j])/((loc_seed-temp_spr1->seedno[j])*BC*1.0)-1.0)<0.2)
+									int scnt = min((int)temp_spr1->score, SM);
+                                    for(j=0,s_k=0; j < scnt; j++)if(fabs((loc_list-start_loc-temp_spr1->loczhi[j])/((loc_seed-temp_spr1->seedno[j])*BC*1.0)-1.0)<ddfs_cutoff)
                                         {
                                             seedcount++;
                                             s_k++;
                                         }
-                                    if(s_k*1.0/temp_spr1->score>0.4)temp_spr1->score=0;
+                                    if(s_k*1.0/scnt>0.4)temp_spr1->score=0;
                                 }
                             //find all right seed
                             for(u_k=*index_spr+1,k=num2/ZVS,temp_spr1=temp_spr+1; k>0; temp_spr1++,k--,u_k++)if(temp_spr1->score>0)
                                 {
                                     start_loc=u_k*ZVSL;
-                                    for(j=0,s_k=0; j<temp_spr1->score; j++)if(fabs((start_loc+temp_spr1->loczhi[j]-loc_list)/((temp_spr1->seedno[j]-loc_seed)*BC*1.0)-1.0)<0.2)
+									int scnt = min((int)temp_spr1->score, SM);
+                                    for(j=0,s_k=0; j < scnt; j++)if(fabs((start_loc+temp_spr1->loczhi[j]-loc_list)/((temp_spr1->seedno[j]-loc_seed)*BC*1.0)-1.0)<ddfs_cutoff)
                                         {
                                             seedcount++;
                                             s_k++;
                                         }
-                                    if(s_k*1.0/temp_spr1->score>0.4)temp_spr1->score=0;
+                                    if(s_k*1.0/scnt>0.4)temp_spr1->score=0;
                                 }
                             canidate_temp.score=canidate_temp.score+seedcount;
                             if(ii==1)canidate_temp.chain='F';
@@ -1469,306 +822,72 @@ static void reference_mapping(int threadint)
                             if(canidatenum<MAXC)canidatenum++;
                             else canidatenum=MAXC;
                         }
-                    for(i=0,index_spr=index_list; i<cc1; i++,index_spr++)
-                    {
-                        database[*index_spr].score=0;
-                        database[*index_spr].index=-1;
-                    }
                 }
 
+				naln = 0;
+				nresults = 0;
                 for(i=0; i<canidatenum; i++)
                 {
-
-                    location_loc[0]=canidate_loc[i].loc1;
-                    location_loc[1]=canidate_loc[i].loc2;
-                    num1=canidate_loc[i].num1;
-                    num2=canidate_loc[i].num2;
-                    left_length1=canidate_loc[i].left1;
-                    left_length2=canidate_loc[i].left2;
-                    right_length1=canidate_loc[i].right1;
-                    right_length2=canidate_loc[i].right2;
-                    if(canidate_loc[i].chain=='F')onedata=onedata1;
-                    else if(canidate_loc[i].chain=='R')onedata=onedata2;
-                    //left alignment search
-                    seq_pr1=seq+location_loc[0]+seed_len-2;
-                    seq_pr2=onedata+location_loc[1]+seed_len-1;
-                    left_loc1=0;
-                    left_loc=0;
-                    resultstore->left_store1[0]='\0';
-                    resultstore->left_store2[0]='\0';
-                    flag_end=1;
-                    while(flag_end)
-                    {
-                        if(num1>600)
-                        {
-                            for(s_k=0; s_k<DN; s_k++,seq_pr1--,seq_pr2--)
-                            {
-                                seq1[s_k]=*seq_pr1;
-                                seq2[s_k]=*seq_pr2;
-                            }
-                            seq1[s_k]='\0';
-                            seq2[s_k]='\0';
-                        }
-                        else
-                        {
-                            flag_end=0;
-                            for(s_k=0; s_k<num1; s_k++,seq_pr1--,seq_pr2--)
-                            {
-                                seq1[s_k]=*seq_pr1;
-                                seq2[s_k]=*seq_pr2;
-                            }
-                            seq1[s_k]='\0';
-                            seq2[s_k]='\0';
-                        }
-                        for(loc=0; loc<2000; loc++)
-                        {
-                            longstr1[loc]=0;
-                            longstr2[loc]=0;
-                        }
-                        align_flag=align(seq1,seq2,0.3*s_k,400,&strvalue,longstr1,longstr2,d_path,aln_path,deffvalue);
-                        if(align_flag==1)
-                        {
-                            strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                            strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                            for(k=strvalue.aln_str_size-1,loc=0,sci=0,eit=0; k>-1&&eit<6; k--)
-                            {
-                                if(strvalue.q_aln_str[k]!='-')loc++;
-                                if(strvalue.t_aln_str[k]!='-')sci++;
-                                if(strvalue.q_aln_str[k]==strvalue.t_aln_str[k])eit++;
-                                else eit=0;
-                            }
-                            if(flag_end==1)
-                            {
-                                loc=DN-strvalue.aln_q_e+loc;
-                                sci=DN-strvalue.aln_t_e+sci;
-                                if(loc==DN)align_flag=0;
-                                seq_pr1=seq_pr1+loc;
-                                seq_pr2=seq_pr2+sci;
-                                strvalue.q_aln_str[k+1]='\0';
-                                strvalue.t_aln_str[k+1]='\0';
-                                left_loc1=left_loc1+DN-loc;
-                                left_loc=left_loc+DN-sci;
-                            }
-                            else
-                            {
-                                loc=num1-strvalue.aln_q_e;
-                                sci=num1-strvalue.aln_t_e;
-                                if(loc==num1)align_flag=0;
-                                left_loc1=left_loc1+num1-loc;
-                                left_loc=left_loc+num1-sci;
-                                seq_pr1=seq_pr1+loc+1;
-                                seq_pr2=seq_pr2+sci+1;
-                                //strvalue.q_aln_str[k+7]='\0';
-                                //strvalue.t_aln_str[k+7]='\0';
-                            }
-                            strcat(resultstore->left_store1,strvalue.q_aln_str);
-                            strcat(resultstore->left_store2,strvalue.t_aln_str);
-                            if(left_length1-left_loc1>=left_length2-left_loc)num1=left_length2-left_loc;
-                            else num1=left_length1-left_loc1;
-                        }
-                        else if(align_flag==2)
-                        {
-                            strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                            strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                            loc=DN-strvalue.aln_q_e;
-                            sci=DN-strvalue.aln_t_e;
-                            if(loc==DN)align_flag=0;
-                            seq_pr1=seq_pr1+loc;
-                            seq_pr2=seq_pr2+sci;
-                            //strvalue.q_aln_str[k+1]='\0';
-                            // strvalue.t_aln_str[k+1]='\0';
-                            left_loc1=left_loc1+DN-loc;
-                            left_loc=left_loc+DN-sci;
-                            strcat(resultstore->left_store1,strvalue.q_aln_str);
-                            strcat(resultstore->left_store2,strvalue.t_aln_str);
-                        }
-                        if(align_flag!=1)break;
-                    }
-
-                    //right alignment search
-                    right_loc1=0;
-                    right_loc=0;
-                    seq_pr1=seq+location_loc[0]-1;
-                    seq_pr2=onedata+location_loc[1];
-                    resultstore->right_store1[0]='\0';
-                    resultstore->right_store2[0]='\0';
-                    flag_end=1;
-                    while(flag_end)
-                    {
-                        if(num2>600)
-                        {
-                            for(s_k=0; s_k<DN; s_k++,seq_pr1++,seq_pr2++)
-                            {
-                                seq1[s_k]=*seq_pr1;
-                                seq2[s_k]=*seq_pr2;
-                            }
-                            seq1[s_k]='\0';
-                            seq2[s_k]='\0';
-                        }
-                        else
-                        {
-                            flag_end=0;
-                            for(s_k=0; s_k<num2; s_k++,seq_pr1++,seq_pr2++)
-                            {
-                                seq1[s_k]=*seq_pr1;
-                                seq2[s_k]=*seq_pr2;
-                            }
-                            seq1[s_k]='\0';
-                            seq2[s_k]='\0';
-                        }
-                        for(loc=0; loc<2000; loc++)
-                        {
-                            longstr1[loc]=0;
-                            longstr2[loc]=0;
-                        }
-                        align_flag=align(seq1,seq2,0.3*s_k,400,&strvalue,longstr1,longstr2,d_path,aln_path,deffvalue);
-                        if(align_flag==1)
-                        {
-                            strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                            strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                            for(k=strvalue.aln_str_size-1,loc=0,sci=0,eit=0; k>-1&&eit<6; k--)
-                            {
-                                if(strvalue.q_aln_str[k]!='-')loc++;
-                                if(strvalue.t_aln_str[k]!='-')sci++;
-                                if(strvalue.q_aln_str[k]==strvalue.t_aln_str[k])eit++;
-                                else eit=0;
-                            }
-                            if(flag_end==1)
-                            {
-                                loc=DN-strvalue.aln_q_e+loc;
-                                sci=DN-strvalue.aln_t_e+sci;
-                                if(loc==DN)align_flag=0;
-                                seq_pr1=seq_pr1-loc;
-                                seq_pr2=seq_pr2-sci;
-                                strvalue.q_aln_str[k+1]='\0';
-                                strvalue.t_aln_str[k+1]='\0';
-                                right_loc1=right_loc1+DN-loc;
-                                right_loc=right_loc+DN-sci;
-                            }
-                            else
-                            {
-                                loc=num2-strvalue.aln_q_e;
-                                sci=num2-strvalue.aln_t_e;
-                                if(loc==num2)align_flag=0;
-                                right_loc1=right_loc1+num2-loc;
-                                right_loc=right_loc+num2-sci;
-                                seq_pr1=seq_pr1-loc;
-                                seq_pr2=seq_pr2-sci;
-                                //strvalue.q_aln_str[k+7]='\0';
-                                //strvalue.t_aln_str[k+7]='\0';
-                            }
-                            strcat(resultstore->right_store1,strvalue.q_aln_str);
-                            strcat(resultstore->right_store2,strvalue.t_aln_str);
-                            if(right_length1-right_loc1>=right_length2-right_loc)num2=right_length2-right_loc;
-                            else num2=right_length1-right_loc1;
-                        }
-                        else if(align_flag==2)
-                        {
-                            strvalue.q_aln_str[strvalue.aln_str_size]='\0';
-                            strvalue.t_aln_str[strvalue.aln_str_size]='\0';
-                            loc=DN-strvalue.aln_q_e;
-                            sci=DN-strvalue.aln_t_e;
-                            if(loc==DN)align_flag=0;
-                            seq_pr1=seq_pr1-loc;
-                            seq_pr2=seq_pr2-sci;;
-                            right_loc1=right_loc1+DN-loc;
-                            right_loc=right_loc+DN-sci;
-                            strcat(resultstore->right_store1,strvalue.q_aln_str);
-                            strcat(resultstore->right_store2,strvalue.t_aln_str);
-                        }
-                        if(align_flag!=1)break;
-                    }
-
-                    s_k=strlen(resultstore->left_store1);
-                    for(j=0,loc=0,k=0; j<s_k; j++)
-                    {
-                        if(resultstore->left_store1[j]!='-')
-                        {
-                            resultstore->out_store1[loc]=resultstore->left_store1[j];
-                            loc++;
-                        }
-                        if(resultstore->left_store2[j]!='-')
-                        {
-                            resultstore->out_store2[k]=resultstore->left_store2[j];
-                            k++;
-                        }
-                    }
-                    resultstore->out_store1[loc]='\0';
-                    resultstore->out_store2[k]='\0';
-                    //printf("%s\n%s\n%s\n%s\n",resultstore->out_store1,resultstore->out_store2,resultstore->left_store1,resultstore->left_store2);
-                    string_check(resultstore->out_store1,resultstore->out_store2,resultstore->left_store1,resultstore->left_store2);
-                    //printf("%s\n%s\n",resultstore->left_store1,resultstore->left_store2);
-
-                    //output result
-                    u_k=strlen(resultstore->left_store1);
-                    for(j=u_k-1,loc=0,eit=0,k=0; j>-1; j--,k++)
-                    {
-                        FR=resultstore->left_store1[j];
-                        resultstore->out_store1[k]=FR;
-                        if(FR!='-')loc++;
-                        FR=resultstore->left_store2[j];
-                        resultstore->out_store2[k]=FR;
-                        if(FR!='-')eit++;
-                    }
-                    resultstore->out_store1[k]='\0';
-                    resultstore->out_store2[k]='\0';
-                    //resultstore->out_store1[k-seed_len]='\0';resultstore->out_store2[k-seed_len]='\0';
-                    if(u_k>0)
-                    {
-                        left_loc1=location_loc[0]+seed_len-loc;
-                        left_loc=location_loc[1]+seed_len-eit+1;
-                    }
-                    else
-                    {
-                        left_loc1=location_loc[0];
-                        left_loc=location_loc[1]+1;
-                    }
-
-                    s_k=strlen(resultstore->right_store1);
-                    for(k=0,loc=0,eit=0; k<s_k; k++)
-                    {
-                        if(resultstore->right_store1[k]!='-')loc++;
-                        if(resultstore->right_store2[k]!='-')eit++;
-                    }
-                    if(s_k>0)
-                    {
-                        right_loc1=location_loc[0]+loc-1;
-                        right_loc=location_loc[1]+eit;
-                    }
-                    else
-                    {
-                        right_loc1=location_loc[0]+seed_len-1;
-                        right_loc=location_loc[1]+seed_len;
-                    }
-                    if(s_k>=seed_len&&u_k>=seed_len)
-                    {
-                        strcat(resultstore->out_store1,resultstore->right_store1+seed_len);
-                        strcat(resultstore->out_store2,resultstore->right_store2+seed_len);
-                    }
-                    else if(u_k<seed_len)
-                    {
-                        strcpy(resultstore->out_store1,resultstore->right_store1);
-                        strcpy(resultstore->out_store2,resultstore->right_store2);
-                    }
-                    FR=canidate_loc[i].chain;
-                    if(strlen(resultstore->out_store1)>1000)
-                    {
-						set_temp_result(read_name, FR, canidate_loc[i].score, left_loc, 
-										right_loc, read_len, left_loc1, right_loc1, 
-										resultstore->out_store2,resultstore->out_store1, &result);
-						output_temp_result(&result, outfile[threadint]);
-                        loc_flag=1;
-                    }
-                }//search result
+					extend_candidate(canidate_loc[i], 
+									 aligner, 
+									 seq, 
+									 seqcount,
+									 onedata1, 
+									 onedata2, 
+									 qstr, 
+									 tstr, 
+									 read_name, 
+									 read_len, 
+									 alns, 
+									 &naln, 
+									 results,
+									 nresults);
+                }
+				
+				rescue_clipped_align(alns, 
+									  naln, 
+									  results,
+									  nresults,
+									  aligner, 
+									  seq, 
+									  seqcount,
+									  onedata1, 
+									  onedata2, 
+									  qstr, 
+									  tstr, 
+									  read_name, 
+									  read_len, 
+									  ZVS, 
+									  BC, 
+									  fwd_database, 
+									  rev_database,
+									  ddfs_cutoff);
+				
+				output_results(alns, naln, results, nresults, num_output, outfile[threadint]);
+				
+				for (int t = 0; t < fnblk; ++t) {
+					int bid = fwd_index_list[t];
+					fwd_database[bid].score = 0;
+					fwd_database[bid].score2 = 0;
+					fwd_database[bid].index = -1;
+				}
+				for (int t = 0; t < rnblk; ++t) {
+					int bid = rev_index_list[t];
+					rev_database[bid].score = 0;
+					rev_database[bid].score2 = 0;
+					rev_database[bid].index = -1;
+				}
             }
-
         }
     }
-    free(database);
-    free(index_list);
-    free(index_score);
-    free(d_path);
-    free(resultstore);
+	delete aligner;
+    free(fwd_database);
+    free(fwd_index_list);
+    free(fwd_index_score);
+	free(rev_database);
+    free(rev_index_list);
+    free(rev_index_score);
+	delete[] aln_seqs;
 }
 
 
@@ -1812,9 +931,11 @@ static int load_fastq(FILE *fq)
 }
 
 
-int meap_ref_impl_large(int maxc)
+int meap_ref_impl_large(int maxc, int noutput, int tech)
 {
 	MAXC = maxc;
+	TECH = tech;
+	num_output = noutput;
     char tempstr[300],fastafile[300];
     int corenum,readall;
     int fileflag,threadno,threadflag;

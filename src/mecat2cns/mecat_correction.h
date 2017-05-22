@@ -6,10 +6,16 @@
 namespace ns_meap_cns {
 
 void
-meap_consensus_one_read_m4(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid);
-	
+consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid);
+
 void
-meap_consensus_one_read_can(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid);
+consensus_one_read_m4_nanopore(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid);
+
+void
+consensus_one_read_can_pacbio(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid);
+
+void
+consensus_one_read_can_nanopore(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid);
 
 } // namespace ns_meap_cns
 

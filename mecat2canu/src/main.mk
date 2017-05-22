@@ -103,6 +103,7 @@ SUBMAKEFILES := stores/gatekeeperCreate.mk \
                 stores/gatekeeperPartition.mk \
 		\
                 stores/ovStoreBuild.mk \
+                stores/ovStoreBucketizer.mk \
                 stores/ovStoreDump.mk \
                 stores/ovStoreStats.mk \
 		\
@@ -123,5 +124,8 @@ SUBMAKEFILES := stores/gatekeeperCreate.mk \
                 \
 		mecat2asmpw/fastaconvert.mk \
 		mecat2asmpw/mecat2asmpw.mk \
+                mecat2asmpw/mecat2asmpw50.mk \
+                mecat2asmpw/mecat2trimpw.mk \
+                mecat2asmpw/mecat2trimpw50.mk \
 		mecat2asmpw/mecat2asmpwConvert.mk \
 		partition_reads/partition_reads.mk

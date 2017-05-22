@@ -12,6 +12,7 @@
 #define RM 100000
 
 #include "output.h"
+#include "../common/defs.h"
 
 static const char* prog_name = NULL;
 static const int kDefaultNumCandidates = 10;
@@ -20,6 +21,8 @@ static int num_candidates;
 static int num_output;
 static int output_format = FMT_REF;
 static const int kDefaultOutputFormat = FMT_REF;
+static int tech;
+static const int kDefaultTech = TECH_PACBIO;
 
 typedef struct
 {
@@ -31,6 +34,7 @@ typedef struct
 	int			num_candidates;
 	int			num_output;
 	int			output_format;
+	int 		tech;
 } meap_ref_options;
 
 void init_meap_ref_options(meap_ref_options* options)
@@ -43,6 +47,7 @@ void init_meap_ref_options(meap_ref_options* options)
 	options->num_candidates = kDefaultNumCandidates;
 	options->num_output = kDefaultNumOutput;
 	options->output_format = kDefaultOutputFormat;
+	options->tech = kDefaultTech;
 }
 
 void print_usage()
@@ -59,7 +64,8 @@ void print_usage()
 	fprintf(stderr, "-t <integer>\tnumber of cput threads\n\t\tdefault: 1\n");
 	fprintf(stderr, "-n <integer>\tnumber of of candidates for gap extension\n\t\tdefault: %d\n", kDefaultNumCandidates);
 	fprintf(stderr, "-b <integer>\toutput the best b alignments\n\t\tdefault: %d\n", kDefaultNumOutput);
-	fprintf(stderr, "-m <0/1/2>\toutput format: 0=ref, 1 = m4, 2 = sam\n\t\tdefault: %d\n", kDefaultOutputFormat);
+	fprintf(stderr, "-m <0/1/2>\toutput format: 0 = ref, 1 = m4, 2 = sam\n\t\tdefault: %d\n", kDefaultOutputFormat);
+	fprintf(stderr, "-x <0/1>\tsequencing technology: 0 = pacbio, 1 = nanopore\n\t\tdefault: %d\n", kDefaultTech);
 }
 
 int
@@ -71,7 +77,7 @@ param_read_t(int argc, char* argv[], meap_ref_options* options)
 	int ret = 1;
 	
 	init_meap_ref_options(options);
-	while((opt_char = getopt(argc, argv, "d:r:w:o:t:n:b:m:")) != -1)
+	while((opt_char = getopt(argc, argv, "d:r:w:o:t:n:b:m:x:")) != -1)
 	{
 		switch(opt_char)
 		{
@@ -98,6 +104,15 @@ param_read_t(int argc, char* argv[], meap_ref_options* options)
 				break;
 			case 'm':
 				options->output_format = atoi(optarg);
+				break;
+			case 'x':
+				if (optarg[0] == '0') {
+					options->tech = TECH_PACBIO;
+				} else if (optarg[0] == '1') {
+					options->tech = TECH_NANOPORE;
+				} else {
+					ERROR("Invalid argument to option 'x': %s\n", optarg);
+				}
 				break;
 			case ':':
 				err_char = (char)optopt;
@@ -248,6 +263,7 @@ int firsttask(int argc, char *argv[])
 	num_candidates = options->num_candidates;
 	num_output = options->num_output;
 	output_format = options->output_format;
+	tech = options->tech;
 	free(options);
     return (corenum);
 }
@@ -310,15 +326,15 @@ filter_contained_results(TempResult** pptr, const int num_results, int* valid)
 void
 output_query_results(fastaindexinfo* chr_idx, const int num_chr, TempResult** pptr, const int num_results, FILE* out)
 {
-	int valid[num_results];
-	qsort(pptr, num_results, sizeof(TempResult*), cmp_temp_result_ptr);
-	filter_contained_results(pptr, num_results, valid);
+	//int valid[num_results];
+	//qsort(pptr, num_results, sizeof(TempResult*), cmp_temp_result_ptr);
+	//filter_contained_results(pptr, num_results, valid);
 	const int n = num_results;
 	int output_cnt = 0;
 	int i;
 	for (i = 0; i < n; ++i)
 	{
-		if (!valid[i]) continue;
+		//if (!valid[i]) continue;
 		int sid = get_chr_id(chr_idx, num_chr, pptr[i]->sb);
 		output_one_result(pptr[i]->read_id,
 						  chr_idx[sid].chrname,
@@ -371,8 +387,9 @@ int result_combine(int readcount, int filecount, char *workpath, char *outfile, 
 		print_sam_program(main_argc, main_argv, out);
 	}
 	
-	TempResult* pptr[num_candidates];
-	for (i = 0; i < num_candidates; ++i) pptr[i] = create_temp_result();
+	const int trsize = num_candidates + 6;
+	TempResult* pptr[trsize];
+	for (i = 0; i < trsize; ++i) pptr[i] = create_temp_result();
 	int num_results = 0;
 	TempResult* trslt = create_temp_result();
 	char* trf_buffer = (char*)malloc(8192);
@@ -406,11 +423,12 @@ int result_combine(int readcount, int filecount, char *workpath, char *outfile, 
 		fclose(thread_results_file);
 	}
 	
-	for (i = 0; i < num_candidates; ++i) pptr[i] = destroy_temp_result(pptr[i]);
+	for (i = 0; i < trsize; ++i) pptr[i] = destroy_temp_result(pptr[i]);
 	destroy_temp_result(trslt);
 	fclose(out);
 	free(out_buffer);
 	free(trf_buffer);
+	free(chr_idx);
 	
 	return 0;
 }
@@ -430,8 +448,7 @@ long get_file_size(const char *path)
     return filesize;
 }
 
-extern int meap_ref_impl_large(int);
-extern int meap_ref_impl_small(int);
+extern int meap_ref_impl_large(int, int, int);
 
 #define __run_system(cmd) \
 	do { \
@@ -477,10 +494,7 @@ int main(int argc, char *argv[])
     fclose(fid1);
     filelength=get_file_size(fastafile);
     gettimeofday(&mapstart, NULL);
-	if(filelength<2147483648)
-		meap_ref_impl_small(num_candidates);
-	else
-		meap_ref_impl_large(num_candidates);
+	meap_ref_impl_large(num_candidates, num_output, tech);
     gettimeofday(&mapend, NULL);
     timeuse = 1000000 * (mapend.tv_sec - mapstart.tv_sec) + mapend.tv_usec - mapstart.tv_usec;
     timeuse /= 1000000;

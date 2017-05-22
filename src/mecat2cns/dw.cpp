@@ -145,7 +145,8 @@ DPathData2* GetDPathIdx(const int d, const int k, const unsigned int max_idx, DP
 
 int Align(const char* query, const int q_len, const char* target, const int t_len, 
           const int band_tolerance, const int get_aln_str, Alignment* align, 
-		  int* V, int* U, DPathData2* d_path, PathPoint* aln_path, const int right_extend)
+		  int* V, int* U, DPathData2* d_path, PathPoint* aln_path, 
+		  const int right_extend, double error_rate)
 {
     int k_offset;
     int  d;
@@ -159,7 +160,7 @@ int Align(const char* query, const int q_len, const char* target, const int t_le
     int aln_path_idx, aln_pos, i, aligned = 0;
     DPathData2* d_path_aux;
     
-    max_d = (int)(.3 * (q_len + t_len));
+    max_d = (int)(2.0 * error_rate * (q_len + t_len));
     k_offset = max_d;
     band_size = band_tolerance * 2;
     align->init();
@@ -219,7 +220,6 @@ int Align(const char* query, const int q_len, const char* target, const int t_le
             align->aln_str_size = (x + y + d) / 2;
             align->aln_q_s = 0;
             align->aln_t_s = 0;
-            std::sort(d_path, d_path + max_idx, SCompareDPathData2());
 
             if (get_aln_str)
             {
@@ -306,7 +306,7 @@ int Align(const char* query, const int q_len, const char* target, const int t_le
 
 void dw_in_one_direction(const char* query, const int query_size, const char* target, const int target_size,
 						 int* U, int* V, Alignment* align, DPathData2* d_path, PathPoint* aln_path, 
-						 SW_Parameters* swp, OutputStore* result, const int right_extend)
+						 SW_Parameters* swp, OutputStore* result, const int right_extend, double error_rate)
 {
 	const idx_t ALN_SIZE = swp->segment_size;
 	const idx_t U_SIZE = swp->row_size;
@@ -329,7 +329,7 @@ void dw_in_one_direction(const char* query, const int query_size, const char* ta
         memset(V, 0, sizeof(int) * V_SIZE);
         if (right_extend) { seq1 = query + extend1; seq2 = target + extend2; }
         else { seq1 = query - extend1; seq2 = target - extend2; }
-        align_flag = Align(seq1, seg_size, seq2, seg_size, 0.3 * seg_size, 400, align, U, V, d_path, aln_path, right_extend);
+        align_flag = Align(seq1, seg_size, seq2, seg_size, 0.3 * seg_size, 400, align, U, V, d_path, aln_path, right_extend, error_rate);
         if (align_flag)
         {
             for (k = align->aln_str_size - 1, i = 0, j = 0, num_matches = 0; k > -1 && num_matches < 4; --k)
@@ -379,19 +379,21 @@ int  dw(const char* query, const int query_size, const int query_start,
         const char* target, const int target_size, const int target_start,
         int* U, int* V, Alignment* align, DPathData2* d_path, 
         PathPoint* aln_path, OutputStore* result, SW_Parameters* swp,
-	    const int min_aln_size)
+	    double error_rate, const int min_aln_size)
 {
     result->init();
     align->init();
     // left extend
     dw_in_one_direction(query + query_start - 1, query_start,
 						target + target_start - 1, target_start,
-						U, V, align, d_path, aln_path, swp, result, 0);
+						U, V, align, d_path, aln_path, swp, result, 
+						0, error_rate);
     align->init();
     // right extend
     dw_in_one_direction(query + query_start, query_size - query_start,
 						target + target_start, target_size - target_start,
-						U, V, align, d_path, aln_path, swp, result, 1);
+						U, V, align, d_path, aln_path, swp, result, 
+						1, error_rate);
 
     // merge the results
     int i, j, k, idx = 0;
@@ -479,14 +481,15 @@ int  dw(const char* query, const int query_size, const int query_start,
 
 bool GetAlignment(const char* query, const int query_start, const int query_size,
 				  const char* target, const int target_start, const int target_size,
-				  DiffRunningData* drd, M5Record& m5)
+				  DiffRunningData* drd, M5Record& m5, double error_rate,
+				  const int min_aln_size)
 {
 	int flag = dw(query, query_size, query_start,
 				  target, target_size, target_start,
 				  drd->DynQ, drd->DynT, 
 				  drd->align, drd->d_path,
 				  drd->aln_path, drd->result,
-				  &drd->swp);
+				  &drd->swp, error_rate, min_aln_size);
 	if (!flag) return false;
 	
 	int qrb = 0, qre = 0;

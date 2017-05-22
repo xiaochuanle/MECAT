@@ -5,8 +5,8 @@ ifeq "$(strip ${TARGET_DIR})" ""
   TARGET_DIR   := ../$(OSTYPE)-$(MACHINETYPE)/bin
 endif
 
-TARGET   := mecat2pw
-SOURCES  := pw.cpp pw_impl.cpp pw_options.cpp
+TARGET   := filter_reads
+SOURCES  := filter_reads.cpp 
 
 SRC_INCDIRS  := ../common .
 
