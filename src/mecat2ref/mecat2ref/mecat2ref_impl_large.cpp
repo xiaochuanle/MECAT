@@ -1,6 +1,6 @@
 #include "mecat2ref_defs.h"
 #include "output.h"
-#include "aux.h"
+#include "mecat2ref_aux.h"
 #include "../common/diff_gapalign.h"
 #include "../common/xdrop_gapalign.h"
 
