@@ -1,3 +1,0 @@
-../../Linux-amd64/obj/libcanu.a/AS_UTL/AS_UTL_alloc.o: \
- AS_UTL/AS_UTL_alloc.C
- AS_UTL/AS_UTL_alloc.C :
