@@ -26,15 +26,15 @@ public:
 		safe_calloc(pac, u1_t, bytes);
 	}
 	
-	void GetSequence(const index_t id, const bool fwd, char* seq, const index_t size_in_ovlp)
+	void GetSequence(const idx_t id, const bool fwd, char* seq, const idx_t size_in_ovlp)
 	{
-		const index_t offset = seq_idx[id].offset;
-		const index_t size = seq_idx[id].size;
+		const idx_t offset = seq_idx[id].offset;
+		const idx_t size = seq_idx[id].size;
 		r_assert(size == size_in_ovlp);
-		index_t idx = 0;
+		idx_t idx = 0;
 		if (fwd)
 		{
-			for (index_t i = 0; i < size; ++i)
+			for (idx_t i = 0; i < size; ++i)
 			{
 				uint1 c = get_char(offset + i);
 				seq[idx++] = c;
@@ -42,7 +42,7 @@ public:
 		}
 		else
 		{
-			for (index_t i = size - 1; i >= 0; --i)
+			for (idx_t i = size - 1; i >= 0; --i)
 			{
 				uint1 c = get_char(offset + i);
 				c = 3 - c;

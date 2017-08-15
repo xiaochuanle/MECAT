@@ -13,11 +13,11 @@ struct ConsensusOptions
     const char* reads;
     const char* corrected_reads;
     int         num_threads;
-    index_t     batch_size;
+    idx_t       batch_size;
     double      min_mapping_ratio;
     int         min_align_size;
     int         min_cov;
-    index_t     min_size;
+    idx_t       min_size;
     bool        print_usage_info;
     int         tech;
 };

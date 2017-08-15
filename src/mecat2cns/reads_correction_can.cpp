@@ -22,11 +22,11 @@ reads_correction_func_can(void* arg)
 {
     ConsensusThreadData& cns_data = *static_cast<ConsensusThreadData*>(arg);
 	ExtensionCandidate* candidates = cns_data.candidates;
-	const index_t num_candidates = cns_data.num_candidates;
-    index_t i = 0, j;
+	const idx_t num_candidates = cns_data.num_candidates;
+    idx_t i = 0, j;
     while (i < num_candidates)
     {
-        const index_t sid = candidates[i].sid;
+        const idx_t sid = candidates[i].sid;
         j = i + 1;
         while (j < num_candidates && candidates[j].sid == sid) ++j;
         if (j - i < cns_data.rco.min_cov) { i = j; continue; }
@@ -55,8 +55,8 @@ reads_correction_func_can(void* arg)
 
 void
 consensus_one_partition_can(const char* m4_file_name,
-						const index_t min_read_id,
-						const index_t max_read_id,
+						const idx_t min_read_id,
+						const idx_t max_read_id,
 						ReadsCorrectionOptions& rco,
 						PackedDB& reads,
 						std::ostream& out)

@@ -20,13 +20,13 @@ protected:
 class IntegerArgument : public Argument
 {
 public:
-    IntegerArgument(const std::string* an, const std::string* ad, const index_t v) : Argument(an, ad), val(v) {}
+    IntegerArgument(const std::string* an, const std::string* ad, const idx_t v) : Argument(an, ad), val(v) {}
     virtual ~IntegerArgument() {}
     virtual int ProcessArgument(int argc, char** argv);
-    index_t value() { return val; }
+    idx_t value() { return val; }
 
 private:
-    index_t val;
+    idx_t val;
 };
 
 class DoubleArgument : public Argument

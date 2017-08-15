@@ -27,18 +27,18 @@ struct CompareOverlapByOverlapSize
 {
 	bool operator()(const Overlap& a ,const Overlap& b)
 	{
-		const index_t ovlp_a = std::max(a.qend - a.qoff, a.send - a.soff);
-		const index_t ovlp_b = std::max(b.qend - b.qoff, b.send - b.soff);
+		const idx_t ovlp_a = std::max(a.qend - a.qoff, a.send - a.soff);
+		const idx_t ovlp_b = std::max(b.qend - b.qoff, b.send - b.soff);
 		return ovlp_a > ovlp_b;
 	}
 };
 
 void
-meap_add_one_aln(const std::string& qaln, const std::string& saln, index_t start_soff, CnsTableItem* cns_table, const char* org_seq)
+meap_add_one_aln(const std::string& qaln, const std::string& saln, idx_t start_soff, CnsTableItem* cns_table, const char* org_seq)
 {
 	r_assert(qaln.size() == saln.size());
-	const index_t aln_size = qaln.size();
-	index_t i = 0;
+	const idx_t aln_size = qaln.size();
+	idx_t i = 0;
 	const char kGap = '-';
 	while (i < aln_size)
 	{
@@ -51,7 +51,7 @@ meap_add_one_aln(const std::string& qaln, const std::string& saln, index_t start
 		else
 		{
 			r_assert(s == kGap);
-			index_t j = i + 1;
+			idx_t j = i + 1;
 			while (j < aln_size && saln[j] == kGap) ++j;
 			++cns_table[start_soff - 1].del_cnt;
 			i = j;
@@ -155,8 +155,8 @@ get_effective_ranges(std::vector<MappingRange>& mranges, std::vector<MappingRang
 void
 output_cns_result(std::vector<CnsResult>& cns_results,
 				  CnsResult& cr,
-				  const index_t beg,
-				  const index_t end,
+				  const idx_t beg,
+				  const idx_t end,
 				  std::string& cns_seq) 
 {
 	const size_t MaxSeqSize = 60000;
@@ -214,7 +214,7 @@ consensus_worker(CnsTableItem* cns_table,
 				 const int read_id,
 				 std::vector<CnsResult>& cns_results)
 {
-	index_t beg = 0, end;
+	idx_t beg = 0, end;
 	CnsResult cns_result;
 	std::string cns_seq;
 	cns_result.id = read_id;
@@ -242,7 +242,7 @@ consensus_worker(CnsTableItem* cns_table,
 }
 
 void
-consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid)
+consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const idx_t read_id, const idx_t sid, const idx_t eid)
 {
 	PackedDB& reads = *ctd->reads;
 	ExtensionCandidate* overlaps = ctd->candidates;
@@ -251,7 +251,7 @@ consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const index_t read_id, co
 	M5Record* m5 = ctd->m5;
 	CnsAlns& cns_vec = ctd->cns_alns;
 	std::vector<CnsResult>& cns_results = ctd->cns_results;
-	const index_t read_size = overlaps[sid].ssize;
+	const idx_t read_size = overlaps[sid].ssize;
 	std::vector<char>& qstr = ctd->query;
 	std::vector<char>& tstr = ctd->target;
 	tstr.resize(read_size);
@@ -261,7 +261,7 @@ consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const index_t read_id, co
 	const int min_align_size = ctd->rco.min_align_size;
 	const int max_added = 60;
 
-	index_t L, R;
+	idx_t L, R;
 	if (eid - sid <= max_added)
 	{
 		L = sid;
@@ -277,13 +277,13 @@ consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const index_t read_id, co
 	CnsTableItem* cns_table = ctd->cns_table;
 	std::for_each(cns_table, cns_table + read_size, CnsTableItemCleaner());
 	cns_vec.clear();
-	for (index_t i = L; i < R; ++i)
+	for (idx_t i = L; i < R; ++i)
 	{
 		Overlap& ovlp = overlaps[i];
 		qstr.resize(ovlp.qsize);
 		reads.GetSequence(ovlp.qid, ovlp.qdir == FWD, qstr.data(), ovlp.qsize);
-		index_t qext = ovlp.qext;
-		index_t sext = ovlp.sext;
+		idx_t qext = ovlp.qext;
+		idx_t sext = ovlp.sext;
 		if (ovlp.qdir == REV) qext = ovlp.qsize - 1 - qext;
 		drd = drd_s;
 		bool r = GetAlignment(qstr.data(), qext, qstr.size(), tstr.data(), sext, tstr.size(), drd, *m5, 0.15, min_align_size);
@@ -303,7 +303,7 @@ consensus_one_read_m4_pacbio(ConsensusThreadData* ctd, const index_t read_id, co
 }
 
 void
-consensus_one_read_m4_nanopore(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid)
+consensus_one_read_m4_nanopore(ConsensusThreadData* ctd, const idx_t read_id, const idx_t sid, const idx_t eid)
 {
 	PackedDB& reads = *ctd->reads;
 	ExtensionCandidate* overlaps = ctd->candidates;
@@ -312,7 +312,7 @@ consensus_one_read_m4_nanopore(ConsensusThreadData* ctd, const index_t read_id, 
 	M5Record* m5 = ctd->m5;
 	CnsAlns& cns_vec = ctd->cns_alns;
 	std::vector<CnsResult>& cns_results = ctd->cns_results;
-	const index_t read_size = overlaps[sid].ssize;
+	const idx_t read_size = overlaps[sid].ssize;
 	std::vector<char>& qstr = ctd->query;
 	std::vector<char>& tstr = ctd->target;
 	tstr.resize(read_size);
@@ -322,7 +322,7 @@ consensus_one_read_m4_nanopore(ConsensusThreadData* ctd, const index_t read_id, 
 	const int min_align_size = ctd->rco.min_align_size;
 	const double min_mapping_ratio = ctd->rco.min_mapping_ratio - 0.02;
 
-	index_t L, R;
+	idx_t L, R;
 	if (eid - sid <= MAX_CNS_OVLPS)
 	{
 		L = sid;
@@ -338,13 +338,13 @@ consensus_one_read_m4_nanopore(ConsensusThreadData* ctd, const index_t read_id, 
 	CnsTableItem* cns_table = ctd->cns_table;
 	std::for_each(cns_table, cns_table + read_size, CnsTableItemCleaner());
 	cns_vec.clear();
-	for (index_t i = L; i < R; ++i)
+	for (idx_t i = L; i < R; ++i)
 	{
 		Overlap& ovlp = overlaps[i];
 		qstr.resize(ovlp.qsize);
 		reads.GetSequence(ovlp.qid, ovlp.qdir == FWD, qstr.data(), ovlp.qsize);
-		index_t qext = ovlp.qext;
-		index_t sext = ovlp.sext;
+		idx_t qext = ovlp.qext;
+		idx_t sext = ovlp.sext;
 		if (ovlp.qdir == REV) qext = ovlp.qsize - 1 - qext;
 		drd = drd_s;
 		bool r = GetAlignment(qstr.data(), qext, qstr.size(), tstr.data(), sext, tstr.size(), drd, *m5, 0.20, min_align_size);
@@ -389,7 +389,7 @@ check_cov_stats(u1_t* cov_stats, int soff, int send)
 }
 
 void
-consensus_one_read_can_pacbio(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid)
+consensus_one_read_can_pacbio(ConsensusThreadData* ctd, const idx_t read_id, const idx_t sid, const idx_t eid)
 {
 	PackedDB& reads = *ctd->reads;
 	ExtensionCandidate* candidates = ctd->candidates;
@@ -398,7 +398,7 @@ consensus_one_read_can_pacbio(ConsensusThreadData* ctd, const index_t read_id, c
 	M5Record* m5 = ctd->m5;
 	CnsAlns& cns_vec = ctd->cns_alns;
 	std::vector<CnsResult>& cns_results = ctd->cns_results;
-	const index_t read_size = candidates[sid].ssize;
+	const idx_t read_size = candidates[sid].ssize;
 	std::vector<char>& qstr = ctd->query;
 	std::vector<char>& tstr = ctd->target;
 	tstr.resize(read_size);
@@ -427,8 +427,8 @@ consensus_one_read_can_pacbio(ConsensusThreadData* ctd, const index_t read_id, c
 		if (used_ids.find(ec.qid) != used_ids.end()) continue;
 		qstr.resize(ec.qsize);
 		reads.GetSequence(ec.qid, ec.qdir == FWD, qstr.data(), ec.qsize);
-		index_t qext = ec.qext;
-		index_t sext = ec.sext;
+		idx_t qext = ec.qext;
+		idx_t sext = ec.sext;
 		if (ec.qdir == REV) qext = ec.qsize - 1 - qext;
 		drd = drd_s;
 		bool r = GetAlignment(qstr.data(), qext, qstr.size(), tstr.data(), sext, tstr.size(), drd, *m5, 0.15, min_align_size);
@@ -453,7 +453,7 @@ consensus_one_read_can_pacbio(ConsensusThreadData* ctd, const index_t read_id, c
 }
 
 void
-consensus_one_read_can_nanopore(ConsensusThreadData* ctd, const index_t read_id, const index_t sid, const index_t eid)
+consensus_one_read_can_nanopore(ConsensusThreadData* ctd, const idx_t read_id, const idx_t sid, const idx_t eid)
 {
 	PackedDB& reads = *ctd->reads;
 	ExtensionCandidate* candidates = ctd->candidates;
@@ -462,7 +462,7 @@ consensus_one_read_can_nanopore(ConsensusThreadData* ctd, const index_t read_id,
 	M5Record* m5 = ctd->m5;
 	CnsAlns& cns_vec = ctd->cns_alns;
 	std::vector<CnsResult>& cns_results = ctd->cns_results;
-	const index_t read_size = candidates[sid].ssize;
+	const idx_t read_size = candidates[sid].ssize;
 	std::vector<char>& qstr = ctd->query;
 	std::vector<char>& tstr = ctd->target;
 	tstr.resize(read_size);
@@ -490,8 +490,8 @@ consensus_one_read_can_nanopore(ConsensusThreadData* ctd, const index_t read_id,
 		if (used_ids.find(ec.qid) != used_ids.end()) continue;
 		qstr.resize(ec.qsize);
 		reads.GetSequence(ec.qid, ec.qdir == FWD, qstr.data(), ec.qsize);
-		index_t qext = ec.qext;
-		index_t sext = ec.sext;
+		idx_t qext = ec.qext;
+		idx_t sext = ec.sext;
 		if (ec.qdir == REV) qext = ec.qsize - 1 - qext;
 		drd = drd_s;
 		bool r = GetAlignment(qstr.data(), qext, qstr.size(), tstr.data(), sext, tstr.size(), drd, *m5, 0.20, min_align_size);

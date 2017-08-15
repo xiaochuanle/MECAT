@@ -267,9 +267,9 @@ inline int M5RecordOvlpSize(const M5Record& m)
 
 //struct Overlap
 //{
-//    index_t qid, qoff, qend, qsize, qext;
+//    idx_t qid, qoff, qend, qsize, qext;
 //    int qdir;
-//    index_t sid, soff, send, ssize, sext;
+//    idx_t sid, soff, send, ssize, sext;
 //    int sdir;
 //};
 

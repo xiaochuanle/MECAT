@@ -35,8 +35,8 @@ public:
         {
             fng(prefix.data(), i + sfid, file_names[i]);
             open_fstream(files[i], file_names[i].c_str(), std::ios::binary);
-            min_seq_ids[i] = std::numeric_limits<index_t>::max();
-            max_seq_ids[i] = std::numeric_limits<index_t>::min();
+            min_seq_ids[i] = std::numeric_limits<idx_t>::max();
+            max_seq_ids[i] = std::numeric_limits<idx_t>::min();
 			results[i].clear();
         }
         num_open_files = nf;

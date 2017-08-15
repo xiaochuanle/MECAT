@@ -162,7 +162,7 @@ struct ConsensusThreadData
 	}
 };
 
-void normalize_gaps(const char* qstr, const char* tstr, const index_t aln_size, std::string& qnorm, std::string& tnorm, const bool push);
+void normalize_gaps(const char* qstr, const char* tstr, const idx_t aln_size, std::string& qnorm, std::string& tnorm, const bool push);
 
 void
 build_cns_thrd_data_can(ExtensionCandidate* ec_list, 

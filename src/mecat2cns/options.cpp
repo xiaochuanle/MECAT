@@ -9,7 +9,7 @@ using namespace std;
 
 static int input_type_pacbio 		= 1;
 static int num_threads_pacbio		= 1;
-static index_t batch_size_pacbio	= 100000;
+static idx_t batch_size_pacbio		= 100000;
 static double mapping_ratio_pacbio  = 0.9;
 static int align_size_pacbio		= 2000;
 static int cov_pacbio				= 6;
@@ -19,7 +19,7 @@ static int tech_pacbio				= TECH_PACBIO;
 
 static int input_type_nanopore 		    = 1;
 static int num_threads_nanopore		    = 1;
-static index_t batch_size_nanopore	    = 100000;
+static idx_t batch_size_nanopore	    = 100000;
 static double mapping_ratio_nanopore    = 0.4;
 static int align_size_nanopore		    = 400;
 static int cov_nanopore				    = 6;
