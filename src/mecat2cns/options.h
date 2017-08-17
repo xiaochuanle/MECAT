@@ -2,6 +2,7 @@
 #define OPTIONS_H
 
 #include "../common/defs.h"
+#include <string>
 
 #define INPUT_TYPE_CAN 	0
 #define INPUT_TYPE_M4	1
@@ -12,6 +13,7 @@ struct ConsensusOptions
     const char* m4;
     const char* reads;
     const char* corrected_reads;
+    const char* grid_options;
     int         num_threads;
     index_t     batch_size;
     double      min_mapping_ratio;
@@ -20,6 +22,7 @@ struct ConsensusOptions
     index_t     min_size;
     bool        print_usage_info;
     int         tech;
+    int         job_index;
 };
 
 void
@@ -30,6 +33,9 @@ parse_arguments(int argc, char* argv[], ConsensusOptions& t);
 
 void
 print_options(ConsensusOptions& t);
+
+std::string
+make_options(const ConsensusOptions& t);
 
 typedef ConsensusOptions ReadsCorrectionOptions;
 

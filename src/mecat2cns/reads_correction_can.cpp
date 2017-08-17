@@ -1,6 +1,8 @@
 #include "reads_correction_can.h"
 
 #include <cstring>
+#include <string>
+#include <sstream>
 
 #include "MECAT_AlnGraphBoost.H"
 #include "mecat_correction.h"
@@ -85,24 +87,44 @@ consensus_one_partition_can(const char* m4_file_name,
     for (int i = 0; i < rco.num_threads; ++i) delete pctds[i];
 }
 
+static int reads_correction_can_p(ReadsCorrectionOptions& rco, std::vector<PartitionFileInfo> &partition_file_vec, PackedDB &reads)
+{
+	std::ostringstream os;
+	os << rco.corrected_reads << "." << rco.job_index;
+	std::string results_file = os.str();
+	std::string working_file = results_file + ".working";
+	std::ofstream out;
+	open_fstream(out, working_file.c_str(), std::ios::out);
+	char process_info[1024];
+	const PartitionFileInfo &p = partition_file_vec[rco.job_index];
+	sprintf(process_info, "processing %s", p.file_name.c_str());
+	DynamicTimer dtimer(process_info);
+	consensus_one_partition_can(p.file_name.c_str(), p.min_seq_id, p.max_seq_id, rco, reads, out);
+	assert(rename(working_file.c_str(), results_file.c_str()) == 0);
+	return 0;
+}
+
 int reads_correction_can(ReadsCorrectionOptions& rco)
 {
-	partition_candidates(rco.m4, rco.batch_size, rco.min_size);
 	std::string idx_file_name;
 	generate_partition_index_file_name(rco.m4, idx_file_name);
 	std::vector<PartitionFileInfo> partition_file_vec;
 	load_partition_files_info(idx_file_name.c_str(), partition_file_vec);
 	PackedDB reads;
 	reads.load_fasta_db(rco.reads);
-	std::ofstream out;
-	open_fstream(out, rco.corrected_reads, std::ios::out);
-	char process_info[1024];
-	for (std::vector<PartitionFileInfo>::iterator iter = partition_file_vec.begin(); iter != partition_file_vec.end(); ++iter)
-	{
-		sprintf(process_info, "processing %s", iter->file_name.c_str());
-		DynamicTimer dtimer(process_info);
-		consensus_one_partition_can(iter->file_name.c_str(), iter->min_seq_id, iter->max_seq_id, rco, reads, out);
+	if (rco.job_index != -1) {
+		return reads_correction_can_p(rco, partition_file_vec, reads);
+	} else {
+		std::ofstream out;
+		open_fstream(out, rco.corrected_reads, std::ios::out);
+		char process_info[1024];
+		for (std::vector<PartitionFileInfo>::iterator iter = partition_file_vec.begin(); iter != partition_file_vec.end(); ++iter)
+		{
+			sprintf(process_info, "processing %s", iter->file_name.c_str());
+			DynamicTimer dtimer(process_info);
+			consensus_one_partition_can(iter->file_name.c_str(), iter->min_seq_id, iter->max_seq_id, rco, reads, out);
+		}
+		
+		return 0;
 	}
-	
-	return 0;
 }

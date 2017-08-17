@@ -4,6 +4,8 @@
 #include <unistd.h>
 
 #include <iostream>
+#include <sstream>
+#include <string>
 
 using namespace std;
 
@@ -38,6 +40,8 @@ static const char cov_n           = 'c';
 static const char min_size_n      = 'l';
 static const char usage_n         = 'h';
 static const char tech_n          = 'x';
+static const char grid_options_n  = 'G';
+static const char job_index_n     = 'I';
 
 void
 print_pacbio_default_options()
@@ -76,6 +80,42 @@ void print_nanopore_default_options()
 		 << "\n";
 }
 
+// given options, recreate arguments from the command line
+std::string
+make_options(const ConsensusOptions& options)
+{
+        std::ostringstream cmd;
+	cmd << " -" << input_type_n << " " << (options.input_type == INPUT_TYPE_CAN ? 0 : 1);
+	if (options.num_threads > 0) {
+		cmd << " -" << num_threads_n << " " << options.num_threads;
+	}
+	if (options.batch_size > 0) {
+		cmd << " -" << batch_size_n << " " << options.batch_size;
+	}
+	if (options.min_mapping_ratio >= 0) {
+		cmd << " -" << mapping_ratio_n << " " << options.min_mapping_ratio;
+	}
+	if (options.min_align_size >= 0) {
+		cmd << " -" << align_size_n << " " << options.min_align_size;
+	}
+	if (options.min_cov >= 0) {
+		cmd << " -" << cov_n << " " << options.min_cov;
+	}
+	if (options.min_size >= 0) {
+		cmd << " -" << min_size_n << " " << options.min_size;
+	}
+	if (options.grid_options != NULL) {
+		cmd << " -" << grid_options_n << " \"" << options.grid_options << "\"";
+	}
+	if (options.job_index != -1) {
+		cmd << " -" << job_index_n << " " << options.job_index;
+	}
+	cmd << " " << options.m4;
+	cmd << " " << options.reads;
+	cmd << " " << options.corrected_reads;
+        return cmd.str();
+}
+
 void
 print_usage(const char* prog)
 {
@@ -99,6 +139,8 @@ print_usage(const char* prog)
 	cerr << "-" << cov_n << " <Integer>\t" << "minimum coverage under consideration" << "\n";
 	
 	cerr << "-" << min_size_n << " <Integer>\t" << "minimum length of corrected sequence" << "\n";
+
+	cerr << "-" << grid_options_n << " <String>\t" << "options for grid submission" << "\n";
 	
 	cerr << "-" << usage_n << "\t\t" << "print usage info." << "\n";
 	
@@ -120,6 +162,7 @@ init_consensus_options(int tech)
 		t.m4                    = NULL;
 		t.reads                 = NULL;
 		t.corrected_reads       = NULL;
+		t.grid_options          = NULL;
 		t.num_threads           = num_threads_pacbio;
 		t.batch_size            = batch_size_pacbio;
 		t.min_mapping_ratio     = mapping_ratio_pacbio;
@@ -128,11 +171,13 @@ init_consensus_options(int tech)
 		t.min_size              = min_size_pacbio;
 		t.print_usage_info      = print_usage_pacbio;
 		t.tech                  = tech_pacbio;
+		t.job_index		= -1;
 	} else {
 		t.input_type            = input_type_nanopore;
 		t.m4                    = NULL;
 		t.reads                 = NULL;
 		t.corrected_reads       = NULL;
+		t.grid_options          = NULL;
 		t.num_threads           = num_threads_nanopore;
 		t.batch_size            = batch_size_nanopore;
 		t.min_mapping_ratio     = mapping_ratio_nanopore;
@@ -141,6 +186,7 @@ init_consensus_options(int tech)
 		t.min_size              = min_size_nanopore;
 		t.print_usage_info      = print_usage_nanopore;
 		t.tech                  = tech_nanopore;
+		t.job_index		= -1;
 	}
     return t;
 }
@@ -187,7 +233,7 @@ parse_arguments(int argc, char* argv[], ConsensusOptions& t)
 	int opt_char;
     char err_char;
     opterr = 0;
-	while((opt_char = getopt(argc, argv, "i:t:p:r:a:c:l:x:h")) != -1) {
+	while((opt_char = getopt(argc, argv, "i:t:p:r:a:c:l:x:hG:I:")) != -1) {
 		switch (opt_char) {
 			case input_type_n:
 				if (optarg[0] == '0')
@@ -219,6 +265,12 @@ parse_arguments(int argc, char* argv[], ConsensusOptions& t)
 				break;
 			case usage_n:
 				t.print_usage_info = true;
+				break;
+			case grid_options_n:
+				t.grid_options = optarg;
+				break;
+			case job_index_n:
+				t.job_index = atoi(optarg);
 				break;
 			case tech_n:
 				break;
@@ -255,7 +307,7 @@ parse_arguments(int argc, char* argv[], ConsensusOptions& t)
 		std::cerr << "coverage must be >= 0\n";
 		parse_success = false;
 	}
-	if (t.min_cov < 0)
+	if (t.min_size < 0)
 	{
 		std::cerr << "sequence size must be >= 0\n";
 		parse_success = false;
@@ -278,6 +330,7 @@ print_options(ConsensusOptions& t)
 	if (t.m4) cout << "reads\t" << t.m4 << "\n";
 	if (t.reads) cout << "output\t" << t.reads << "\n";
 	if (t.corrected_reads) cout << "m4\t" << t.corrected_reads << "\n";
+	if (t.grid_options) cout << "grid\t" << t.grid_options << "\n";
 	cout << "number of threads:\t" << t.num_threads << "\n";
 	cout << "batch size:\t" << t.batch_size << "\n";
 	cout << "mapping ratio:\t" << t.min_mapping_ratio << "\n";
