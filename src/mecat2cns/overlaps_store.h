@@ -4,6 +4,9 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <vector>
+#include <unistd.h>
+#include <iostream>
 
 #include "../common/defs.h"
 #include "../common/pod_darr.h"
@@ -19,28 +22,37 @@ public:
 	{
 		file_is_open = false;
 		num_open_files = false;
-		for (int i = 0; i < num_open_files; ++i) results[i].reserve(kStoreSize);
+
+                kStoreSize = 0;
+		// leave room for stdin, stdout, stderr, a few others
+		kNumFiles = sysconf(_SC_OPEN_MAX) - 10;
+		files = NULL;
+		results = NULL;
 	}
 	~PartitionResultsWriter()
 	{
-		
+		CloseFiles();
 	}
 	void OpenFiles(const idx_t sfid, const idx_t efid, const std::string& prefix, file_name_generator fng)
 	{
-		if (file_is_open) CloseFiles();
-		
+		CloseFiles();
 		const int nf = efid - sfid;
-        if (nf == 0) return;
-        for (int i = 0; i < nf; ++i)
-        {
-            fng(prefix.data(), i + sfid, file_names[i]);
-            open_fstream(files[i], file_names[i].c_str(), std::ios::binary);
-            min_seq_ids[i] = std::numeric_limits<index_t>::max();
-            max_seq_ids[i] = std::numeric_limits<index_t>::min();
-			results[i].clear();
-        }
-        num_open_files = nf;
-        file_is_open = true;
+		if (nf == 0) return;
+		// allocate about a gb of memory as buffer
+		kStoreSize = 1073741824 / sizeof(ExtensionCandidate) / nf;
+		file_names.assign(nf, "");
+		min_seq_ids.assign(nf, std::numeric_limits<idx_t>::max());
+		max_seq_ids.assign(nf, std::numeric_limits<idx_t>::min());
+		files = new std::ofstream[nf];
+		results = new PODArray<T>[nf];
+		for (int i = 0; i < nf; ++i)
+		{
+			fng(prefix.data(), i + sfid, file_names[i]);
+			open_fstream(files[i], file_names[i].c_str(), std::ios::binary);
+			results[i].reserve(kStoreSize);
+		}
+		num_open_files = nf;
+		file_is_open = true;
 	}
 	void CloseFiles()
 	{
@@ -54,9 +66,17 @@ public:
 				files[i].write(buf, s);
 			}
 		}
-        for (int i = 0; i < num_open_files; ++i) close_fstream(files[i]);
-        file_is_open = false;
-        num_open_files = 0;
+		for (int i = 0; i < num_open_files; ++i) close_fstream(files[i]);
+		file_names.clear();
+		min_seq_ids.clear();
+		max_seq_ids.clear();
+		delete[] files;
+		delete[] results;
+		files = NULL;
+		results = NULL;
+		kStoreSize = 0;
+		file_is_open = false;
+		num_open_files = 0;
 	}
 	void WriteOneResult(const int fid, const idx_t seq_id, const T& r)
 	{
@@ -74,16 +94,16 @@ public:
 	}
 	
 public:
-	static const int kNumFiles = 10;
-	static const int kStoreSize = 500000;
+	int kNumFiles;
+	int kStoreSize;
 	
-	PODArray<T> results[kNumFiles];
+	PODArray<T> *results;	// can't use vector<>, causes memory corruption
 	bool file_is_open;
-    int num_open_files;
-	std::ofstream files[kNumFiles];
-    std::string file_names[kNumFiles];
-	idx_t min_seq_ids[kNumFiles];
-	idx_t max_seq_ids[kNumFiles];
+	int num_open_files;
+	std::ofstream *files;	// can't use vector<>, non-copyable
+	std::vector<std::string> file_names;
+	std::vector<idx_t> min_seq_ids;
+	std::vector<idx_t> max_seq_ids;
 };
 
 template <class T>

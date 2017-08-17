@@ -176,10 +176,10 @@ partition_candidates(const char* input, const idx_t batch_size, const int min_re
 	
 	ExtensionCandidate ec, nec;
 	PartitionResultsWriter<ExtensionCandidate> prw;
-	for (index_t i = 0; i < num_batches; i += PartitionResultsWriter<ExtensionCandidate>::kNumFiles)
+	for (index_t i = 0; i < num_batches; i += prw.kNumFiles)
 	{
 		const index_t sfid = i;
-        const index_t efid = std::min(sfid + PartitionResultsWriter<ExtensionCandidate>::kNumFiles, num_batches);
+        const index_t efid = std::min(sfid + prw.kNumFiles, num_batches);
         const int nf = efid - sfid;
         const index_t L = batch_size * sfid;
         const index_t R = batch_size * efid;
@@ -231,10 +231,10 @@ partition_m4records(const char* m4_file_name, const double min_cov_ratio, const 
     M4Record m4, nm4;
 	ExtensionCandidate ec;
     PartitionResultsWriter<ExtensionCandidate> prw;
-    for (index_t i = 0; i < num_batches; i += PartitionResultsWriter<ExtensionCandidate>::kNumFiles)
+    for (index_t i = 0; i < num_batches; i += prw.kNumFiles)
     {
         const index_t sfid = i;
-        const index_t efid = std::min(sfid + PartitionResultsWriter<ExtensionCandidate>::kNumFiles, num_batches);
+        const index_t efid = std::min(sfid + prw.kNumFiles, num_batches);
         const int nf = efid - sfid;
         const index_t L = batch_size * sfid;
         const index_t R = batch_size * efid;
