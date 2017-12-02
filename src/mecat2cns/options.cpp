@@ -16,6 +16,7 @@ static int cov_pacbio				= 6;
 static int min_size_pacbio			= 5000;
 static bool print_usage_pacbio		= false;
 static int tech_pacbio				= TECH_PACBIO;
+static int num_partition_files   	= 10;
 
 static int input_type_nanopore 		    = 1;
 static int num_threads_nanopore		    = 1;
@@ -38,6 +39,7 @@ static const char cov_n           = 'c';
 static const char min_size_n      = 'l';
 static const char usage_n         = 'h';
 static const char tech_n          = 'x';
+static const char num_partition_files_n = 'k';
 
 void
 print_pacbio_default_options()
@@ -55,6 +57,8 @@ print_pacbio_default_options()
 		 << '-' << cov_n << ' ' << cov_pacbio
 		 << ' '
 		 << '-' << min_size_n << ' ' << min_size_pacbio
+		 << ' '
+		 << '-' << num_partition_files_n << ' ' << num_partition_files
 		 << "\n";
 }
 
@@ -73,6 +77,8 @@ void print_nanopore_default_options()
 		 << '-' << cov_n << ' ' << cov_nanopore
 		 << ' '
 		 << '-' << min_size_n << ' ' << min_size_nanopore
+		 << ' '
+		 << '-' << num_partition_files_n << ' ' << num_partition_files
 		 << "\n";
 }
 
@@ -99,6 +105,11 @@ print_usage(const char* prog)
 	cerr << "-" << cov_n << " <Integer>\t" << "minimum coverage under consideration" << "\n";
 	
 	cerr << "-" << min_size_n << " <Integer>\t" << "minimum length of corrected sequence" << "\n";
+	
+	cerr << "-" << num_partition_files_n << " <Integer>\t" 
+		 << "number of partition files when partitioning overlap results" 
+		 << " (if < 0, then it will be set to system limit value)"
+		 << "\n";
 	
 	cerr << "-" << usage_n << "\t\t" << "print usage info." << "\n";
 	
@@ -127,6 +138,7 @@ init_consensus_options(int tech)
 		t.min_cov               = cov_pacbio;
 		t.min_size              = min_size_pacbio;
 		t.print_usage_info      = print_usage_pacbio;
+		t.num_partition_files 	= num_partition_files;
 		t.tech                  = tech_pacbio;
 	} else {
 		t.input_type            = input_type_nanopore;
@@ -140,6 +152,7 @@ init_consensus_options(int tech)
 		t.min_cov               = cov_nanopore;
 		t.min_size              = min_size_nanopore;
 		t.print_usage_info      = print_usage_nanopore;
+		t.num_partition_files	= num_partition_files;
 		t.tech                  = tech_nanopore;
 	}
     return t;
@@ -180,14 +193,12 @@ parse_arguments(int argc, char* argv[], ConsensusOptions& t)
 	if (tech == -1) {
 		return 1;
 	} 
-	
-	cout << "tech = " << tech << "\n";
 	t = init_consensus_options(tech);
 	
 	int opt_char;
     char err_char;
     opterr = 0;
-	while((opt_char = getopt(argc, argv, "i:t:p:r:a:c:l:x:h")) != -1) {
+	while((opt_char = getopt(argc, argv, "i:t:p:r:a:c:l:x:k:h")) != -1) {
 		switch (opt_char) {
 			case input_type_n:
 				if (optarg[0] == '0')
@@ -221,6 +232,9 @@ parse_arguments(int argc, char* argv[], ConsensusOptions& t)
 				t.print_usage_info = true;
 				break;
 			case tech_n:
+				break;
+			case num_partition_files_n:
+				t.num_partition_files = atoi(optarg);
 				break;
 			case '?':
                 err_char = (char)optopt;
@@ -284,5 +298,6 @@ print_options(ConsensusOptions& t)
 	cout << "align size:\t" << t.min_align_size << "\n";
 	cout << "cov:\t" << t.min_cov << "\n";
 	cout << "min size:\t" << t.min_size << "\n";
+	cout << "partition files:\t" << t.num_partition_files << "\n";
 	cout << "tech:\t" << t.tech << "\n";
 }

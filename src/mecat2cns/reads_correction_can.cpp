@@ -87,7 +87,7 @@ consensus_one_partition_can(const char* m4_file_name,
 
 int reads_correction_can(ReadsCorrectionOptions& rco)
 {
-	partition_candidates(rco.m4, rco.batch_size, rco.min_size);
+	partition_candidates(rco.m4, rco.batch_size, rco.min_size, rco.num_partition_files);
 	std::string idx_file_name;
 	generate_partition_index_file_name(rco.m4, idx_file_name);
 	std::vector<PartitionFileInfo> partition_file_vec;

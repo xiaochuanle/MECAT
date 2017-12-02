@@ -5,6 +5,8 @@
 #include <set>
 #include <vector>
 
+#include <unistd.h>
+
 #include "overlaps_store.h"
 #include "reads_correction_aux.h"
 
@@ -162,8 +164,68 @@ normalise_candidate(ExtensionCandidate& src, ExtensionCandidate& dst, const bool
 	}
 }
 
+int
+fix_file_counts(int num_files) {
+	if (num_files < 0) {
+		num_files = sysconf(_SC_OPEN_MAX) - 10;
+	}
+	return num_files;
+}
+
 void
-partition_candidates(const char* input, const idx_t batch_size, const int min_read_size)
+partition_candidates(const char* input, const idx_t batch_size, const int min_read_size, int num_files)
+{
+	DynamicTimer dt(__func__);
+	
+	num_files = fix_file_counts(num_files);
+	const idx_t num_reads = get_num_reads(input);
+	const idx_t num_batches = (num_reads + batch_size - 1) / batch_size;
+	string idx_file_name;
+	generate_partition_index_file_name(input, idx_file_name);
+	ofstream idx_file;
+	open_fstream(idx_file, idx_file_name.c_str(), ios::out);
+	
+	ExtensionCandidate ec, nec;
+	PartitionResultsWriter<ExtensionCandidate> prw(num_files);
+	for (idx_t i = 0; i < num_batches; i += num_files) {
+		const idx_t sfid = i;
+		const idx_t efid = min(sfid + num_files, num_batches);
+		const int nf = efid - sfid;
+		const idx_t Lid = batch_size * sfid;
+		const idx_t Rid = batch_size * efid;
+		cout << "Lid = " << Lid
+			 << ", Rid = " << Rid
+			 << "\n";
+		ifstream in;
+		open_fstream(in, input, ios::in);
+		prw.OpenFiles(sfid, efid, input, generate_partition_file_name);
+		
+		while (in >> ec) {
+			if (ec.qsize < min_read_size || ec.ssize < min_read_size) continue;
+			if (ec.qid >= Lid && ec.qid < Rid) {
+				normalise_candidate(ec, nec, false);
+				prw.WriteOneResult((ec.qid - Lid) / batch_size, ec.qid, nec);
+			}
+			if (ec.sid >= Lid && ec.sid < Rid)
+			{
+				normalise_candidate(ec, nec, true);
+				prw.WriteOneResult((ec.sid - Lid) / batch_size, ec.sid, nec);
+			}
+		}
+		for (int k = 0; k < nf; ++k)
+		{
+			if (prw.max_seq_ids[k] == std::numeric_limits<index_t>::min()) continue;
+			idx_file << prw.file_names[k] << "\t" << prw.min_seq_ids[k] << "\t" << prw.max_seq_ids[k] << "\n";
+			fprintf(stderr, "%s contains reads %d --- %d\n", prw.file_names[k].c_str(), (int)prw.min_seq_ids[k], (int)prw.max_seq_ids[k]);
+		}
+		prw.CloseFiles();
+	}
+	close_fstream(idx_file);
+}
+
+/*
+void
+partition_candidates(const char* input, const idx_t batch_size, const int min_read_size, const int num_files)
 {
 	DynamicTimer dtimer(__func__);
 	
@@ -212,7 +274,9 @@ partition_candidates(const char* input, const idx_t batch_size, const int min_re
     prw.CloseFiles();
 	close_fstream(idx_file);
 }
+*/
 
+/*
 void
 partition_m4records(const char* m4_file_name, const double min_cov_ratio, const index_t batch_size, const int min_read_size)
 {
@@ -249,6 +313,74 @@ partition_m4records(const char* m4_file_name, const double min_cov_ratio, const 
 			if (repeat_reads.find(m4qid(m4)) != repeat_reads.end()
 				||
 				repeat_reads.find(m4sid(m4)) != repeat_reads.end()) continue;
+			
+            if (m4qid(m4) >= L && m4qid(m4) < R)
+            {
+                normalize_m4record(m4, false, nm4);
+				m4_to_candidate(nm4, ec);
+                prw.WriteOneResult((m4qid(m4) - L) / batch_size, m4qid(m4), ec);
+            }
+            if (m4sid(m4) >= L && m4sid(m4) < R)
+            {
+                normalize_m4record(m4, true, nm4);
+				m4_to_candidate(nm4, ec);
+                prw.WriteOneResult((m4sid(m4) - L) / batch_size, m4sid(m4), ec);
+            }
+        }
+
+        for (int k = 0; k < nf; ++k)
+        {
+            if (prw.max_seq_ids[k] == std::numeric_limits<index_t>::min()) continue;
+            idx_file << prw.file_names[k] << "\t" << prw.min_seq_ids[k] << "\t" << prw.max_seq_ids[k] << "\n";
+			fprintf(stderr, "%s contains reads %d --- %d\n", prw.file_names[k].c_str(), (int)prw.min_seq_ids[k], (int)prw.max_seq_ids[k]);
+        }
+
+        prw.CloseFiles();
+    }
+    close_fstream(idx_file);
+}
+*/
+
+void
+partition_m4records(const char* m4_file_name, 
+					const double min_cov_ratio, 
+					const index_t batch_size, 
+					const int min_read_size,
+				    int num_files)
+{
+	DynamicTimer dtimer(__func__);
+	
+	num_files = fix_file_counts(num_files);
+    index_t num_reads, num_qualified_records;
+    get_qualified_m4record_counts(m4_file_name, min_cov_ratio, num_qualified_records, num_reads);
+	set<index_t> repeat_reads;
+    const index_t num_batches = (num_reads + batch_size - 1) / batch_size;
+    std::string idx_file_name;
+    generate_partition_index_file_name(m4_file_name, idx_file_name);
+    std::ofstream idx_file;
+    open_fstream(idx_file, idx_file_name.c_str(), std::ios::out);
+
+    M4Record m4, nm4;
+	ExtensionCandidate ec;
+    PartitionResultsWriter<ExtensionCandidate> prw(num_files);
+    for (index_t i = 0; i < num_batches; i += num_files)
+    {
+        const index_t sfid = i;
+        const index_t efid = std::min(sfid + num_files, num_batches);
+        const int nf = efid - sfid;
+        const index_t L = batch_size * sfid;
+        const index_t R = batch_size * efid;
+        std::ifstream in;
+        open_fstream(in, m4_file_name, std::ios::in);
+		prw.OpenFiles(sfid, efid, m4_file_name, generate_partition_file_name);
+
+        while (in >> m4)
+        {
+			if (m4qsize(m4) < min_read_size || m4ssize(m4) < min_read_size) continue;
+            if (!check_m4record_mapping_range(m4, min_cov_ratio)) continue;
+			if (repeat_reads.find(m4qid(m4)) != repeat_reads.end()
+					||
+					repeat_reads.find(m4sid(m4)) != repeat_reads.end()) continue;
 			
             if (m4qid(m4) >= L && m4qid(m4) < R)
             {

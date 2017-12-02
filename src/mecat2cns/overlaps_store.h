@@ -15,16 +15,28 @@ public:
 	typedef void (*file_name_generator)(const char* prefix, const idx_t id, std::string& name);
 	
 public:
-	PartitionResultsWriter()
+	PartitionResultsWriter(const int max_num_files)
 	{
-		file_is_open = false;
-		num_open_files = false;
-		for (int i = 0; i < num_open_files; ++i) results[i].reserve(kStoreSize);
+		file_is_open = 0;
+		num_open_files = 0;
+		MaxNumFiles = max_num_files;
+		results = new PODArray<T>[MaxNumFiles];
+		files = new std::ofstream[MaxNumFiles];
+		file_names = new std::string[MaxNumFiles];
+		min_seq_ids = new idx_t[MaxNumFiles];
+		max_seq_ids = new idx_t[MaxNumFiles];
+		for (int i = 0; i < MaxNumFiles; ++i) results[i].reserve(kStoreSize);
 	}
+	
 	~PartitionResultsWriter()
 	{
-		
+		delete[] results;
+		delete[] files;
+		delete[] file_names;
+		delete[] min_seq_ids;
+		delete[] max_seq_ids;
 	}
+	
 	void OpenFiles(const idx_t sfid, const idx_t efid, const std::string& prefix, file_name_generator fng)
 	{
 		if (file_is_open) CloseFiles();
@@ -42,6 +54,7 @@ public:
         num_open_files = nf;
         file_is_open = true;
 	}
+	
 	void CloseFiles()
 	{
 		if (!file_is_open) return;
@@ -58,8 +71,15 @@ public:
         file_is_open = false;
         num_open_files = 0;
 	}
+	
 	void WriteOneResult(const int fid, const idx_t seq_id, const T& r)
 	{
+		if (fid >= num_open_files) {
+			std::cout << "fid = " << fid
+					  << ", num_open_files = "
+					  << num_open_files
+					  << "\n";
+		}
 		r_assert(fid < num_open_files);
 		min_seq_ids[fid] = std::min(min_seq_ids[fid], seq_id);
         max_seq_ids[fid] = std::max(max_seq_ids[fid], seq_id);
@@ -74,16 +94,15 @@ public:
 	}
 	
 public:
-	static const int kNumFiles = 10;
+	int MaxNumFiles;
 	static const int kStoreSize = 500000;
-	
-	PODArray<T> results[kNumFiles];
+	PODArray<T>* results;
 	bool file_is_open;
-    int num_open_files;
-	std::ofstream files[kNumFiles];
-    std::string file_names[kNumFiles];
-	idx_t min_seq_ids[kNumFiles];
-	idx_t max_seq_ids[kNumFiles];
+	int num_open_files;
+	std::ofstream* files;
+	std::string* file_names;
+	idx_t* min_seq_ids;
+	idx_t* max_seq_ids;
 };
 
 template <class T>

@@ -5,6 +5,7 @@ int main(int argc, char** argv)
 {
     ReadsCorrectionOptions rco;
 	int r = parse_arguments(argc, argv, rco);
+	print_options(rco);
 	if (r) {
 		print_usage(argv[0]);
 		exit(1);

@@ -20,6 +20,7 @@ struct ConsensusOptions
     index_t     min_size;
     bool        print_usage_info;
     int         tech;
+	int			num_partition_files;
 };
 
 void
