@@ -8,6 +8,7 @@ dextract:
 
 dexta: 
 	${CC} ${CFLAGS} -o dexta gdexta.c DB.c QV.c
+	${CC} ${CFLAGS} -o dexta dexta.c DB.c QV.c
 
 undexta: 
 	${CC} ${CFLAGS} -o undexta undexta.c DB.c QV.c
