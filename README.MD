@@ -200,7 +200,7 @@ After installation, all the executables are found in `MECAT/Linux-amd64/bin`. Th
 
 * Install `HDF5`:
 ``` shell
-wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8.15-patch1/src/hdf5-1.8.15-patch1.tar.gz
+wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.8/hdf5-1.8.15-patch1/src/hdf5-1.8.15-patch1.tar.gz
 tar xzvf hdf5-1.8.15-patch1.tar.gz
 mkdir hdf5
 cd hdf5-1.8.15-patch1
