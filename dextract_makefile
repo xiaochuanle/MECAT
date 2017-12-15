@@ -7,7 +7,6 @@ dextract:
 	${CC} $(CFLAGS) -I$(HDF5_INCLUDE) -L$(HDF5_LIB) -o dextract dextract.c DB.c QV.c -lhdf5
 
 dexta: 
-	${CC} ${CFLAGS} -o dexta gdexta.c DB.c QV.c
 	${CC} ${CFLAGS} -o dexta dexta.c DB.c QV.c
 
 undexta: 
