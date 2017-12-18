@@ -360,7 +360,7 @@ The options are:
 
 * `-a [overlap size]`, only output overlaps with length >= a. Default: 2000 if x is set to 0, 500 if x is set to 1.
 
-* `-k [# of kmers]`, two blocks between two reads having >= k kmer matches will be considered as a matched block pairt. Default: 4 if x is set to 0, 2 if x is set to 1.
+* `-k [# of kmers]`, two blocks between two reads having >= k kmer matches will be considered as a matched block pair. Default: 4 if x is set to 0, 2 if x is set to 1.
 
 * `-g [0/1]`, output the gapped extension start point (1) or not (0), default=0.
 
@@ -629,7 +629,7 @@ After assembling, the results are given in the folder `working-folder`. The asse
 
 # <a name="S-citation"></a>`Citation`
 
-Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi Xie. [MECAT: an ultra-fast mapping, error correction and de novo assembly tool for single-molecule sequencing reads](http://biorxiv.org/content/early/2016/12/15/089250). bioRxiv 089250; doi: https://doi.org/10.1101/089250
+Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Yue Han, Feng Luo, Zhi Xie. [MECAT: fast mapping, error correction, and de novo assembly for single-molecule sequencing reads](https://www.nature.com/articles/nmeth.4432). Nature Methods, 2017, 14: 1072-1074
 
 # <a name="S-contact"></a> `Contact`
 
@@ -640,6 +640,13 @@ Chuan-Le Xiao, Ying Chen, Shang-Qian Xie, Kai-Ning Chen, Yan Wang, Feng Luo, Zhi
 * Feng Luo, luofeng@clemson.edu
 
 # <a name="S-update"></a>`Update Information`
+Updates in MECAT V1.3 (2017.12.18):
+
+* Correct text error in HDF5 Installation.
+
+* Update the makefile in dextract .
+
+* Update citation.
 
 Updates in MECAT V1.2 (2017.5.22):
 
