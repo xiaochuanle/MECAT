@@ -1,0 +1,30 @@
+PATH=/media/HSF_DISK_A/lamprey/MECAT/Linux-amd64/bin:$PATH
+
+#mecat2pw -j 0 -t 60 -w wrk_dir \
+#  -d raw_fasta/lm_sp_raw_seq.fasta \
+#  -o lm_sp_raw_seq.pm.can 
+# 
+#exit
+
+mecat2cns -i 0 -t 60 -a 2000 \
+  lm_sp_raw_seq.pm.can \
+  raw_fasta/lm_sp_raw_seq.fasta \
+  lm_sp_corrected_seq.fasta
+
+exit
+
+extract_sequences \
+  lm_sp_corrected_seq.fasta \
+  lm_sp_corrected_seq_60x 1500000000 60
+
+extract_sequences \
+  lm_sp_corrected_seq.fasta \
+  lm_sp_corrected_seq_30x 1500000000 30
+  
+exit
+  
+mecat2canu useGrid=0 -trim-assemble -p lm_mecat_30x -d lm_mecat_30x genomeSize=1500000000 \
+  ErrorRate=0.02 maxMemory=420 maxThreads=60 \
+  Overlapper=mecat2asmpw -pacbio-corrected lm_sp_corrected_seq_30x.fasta  
+  
+exit

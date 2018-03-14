@@ -160,33 +160,30 @@ output_cns_result(std::vector<CnsResult>& cns_results,
 				  std::string& cns_seq) 
 {
 	const size_t MaxSeqSize = 60000;
-	const size_t BlkSize = 50000;
 	const size_t OvlpSize = 10000;
+	// BlkSize must be >= OvlpSize
+	const size_t BlkSize = MaxSeqSize - OvlpSize - 1000;
 	
-	size_t size = cns_seq.size();
+	const size_t size = cns_seq.size();
 	if (size <= MaxSeqSize) {
 		cr.range[0] = beg;
 		cr.range[1] = end;
 		cr.seq = cns_seq;
 		cns_results.push_back(cr);
 	} else {
+		const size_t cutoff = size - OvlpSize - 1000;
 		size_t L = 0, R;
-		size_t left = size;
-		while (left) {
-			R = std::min(L + BlkSize, size);
-			size_t blksize = R - L;
-			left -= blksize;
-			if (left <= OvlpSize + 1000) {
+		do {
+			R = L + BlkSize;
+			if (R >= cutoff) {
 				R = size;
-				blksize += left;
-				left = 0;
 			}
 			cr.range[0] = L + beg;
-			cr.range[1] = R + beg;
-			cr.seq = cns_seq.substr(L, blksize);
+			cr.range[1] = R < size && R + beg < static_cast<size_t>(end) ? R + beg : end;
+			cr.seq = cns_seq.substr(L, R - L);
 			cns_results.push_back(cr);
 			L = R - OvlpSize;
-		}
+		} while (R < size);
 	}
 }
 
