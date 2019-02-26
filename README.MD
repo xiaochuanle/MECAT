@@ -1,3 +1,5 @@
+**We have released a new version [MECAT2](https://github.com/xiaochuanle/MECAT2). Please go and download that new version. This version will not be updated any more.**
+
 # </a>Contents
 
 * [Introduction](#S-introduction)
