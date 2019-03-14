@@ -282,7 +282,7 @@ Download [MAP006-PCR-1_2D_pass.fasta](http://nanopore.s3.climb.ac.uk/MAP006-PCR-
 
 ``` shell
 
-mecat2pw -j 0 -d MAP006-PCR-1_2D_pass.fasta -o candidatex.txt -w wrk_dir -t 16 -x 1
+mecat2pw -j 0 -d MAP006-PCR-1_2D_pass.fasta -o candidates.txt -w wrk_dir -t 16 -x 1
 
 ```
 
