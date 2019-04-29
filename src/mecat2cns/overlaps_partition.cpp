@@ -150,10 +150,14 @@ normalise_candidate(ExtensionCandidate& src, ExtensionCandidate& dst, const bool
 		dst.qid = src.sid;
 		dst.qext = src.sext;
 		dst.qsize = src.ssize;
+		dst.qoff = src.soff;
+		dst.qend = src.send;
 		dst.sdir = src.qdir;
 		dst.sid = src.qid;
 		dst.sext = src.qext;
 		dst.ssize = src.qsize;
+		dst.soff = src.qoff;
+		dst.send = src.qend;
 		dst.score = src.score;
 	}
 	
@@ -251,6 +255,8 @@ partition_candidates(const char* input, const idx_t batch_size, const int min_re
 		
 		while (in >> ec)
 		{
+			// not set by >>
+			ec.qoff = ec.soff = ec.qend = ec.send = 0;
 			if (ec.qsize < min_read_size || ec.ssize < min_read_size) continue;
 			if (ec.qid >= L && ec.qid < R)
 			{
