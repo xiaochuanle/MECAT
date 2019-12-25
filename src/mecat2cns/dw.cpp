@@ -1,555 +1,483 @@
 #include "dw.h"
 
-namespace ns_banded_sw {
+#ifdef __SSE2__
+#include <emmintrin.h>	// _mm_loadu_si128(), _mm_xor_si128()
+#include <smmintrin.h>	// _mm_test_all_zeros()
+#endif
+#include <algorithm>	// copy(), fill()
+#include <vector>	// vector<>
+#include <stdint.h>	// uint8_t
+#include <iostream>
 
-#define GAP_ALN 4
+#define GAP_VAL 4
 
-SW_Parameters
-get_sw_parameters_small()
-{
-    SW_Parameters swp;
-    swp.segment_size = 500;
-    swp.row_size = 4096;
-    swp.column_size = 4096;
-    swp.segment_aln_size = 4096;
-    swp.max_seq_size = 100000;
-    swp.max_aln_size = 100000;
-    swp.d_path_size = 5000000;
-    swp.aln_path_size = 5000000;
+#ifdef __SSE2__
 
-    return swp;
+// bit_scan_forward definitions are taken from vectori128.h, part of
+// Agner Fog's vector class package version 1.28, and are copyright
+// by him (2017) (https://www.agner.org/optimize/#vectorclass)
+
+// Define bit-scan-forward function. Gives index to lowest set bit
+#if defined (__GNUC__) || defined(__clang__)
+static inline uint32_t bit_scan_forward(const uint32_t a) __attribute__ ((pure));
+static inline uint32_t bit_scan_forward(const uint32_t a) {
+	uint32_t r;
+	__asm("bsfl %1, %0" : "=r"(r) : "r"(a) : );
+	return r;
 }
-
-SW_Parameters
-get_sw_parameters_large()
-{
-    SW_Parameters swp;
-    swp.segment_size = 1000;
-    swp.row_size = 4096;
-    swp.column_size = 4096;
-    swp.segment_aln_size = 4096;
-    swp.max_seq_size = 100000;
-    swp.max_aln_size = 100000;
-    swp.d_path_size = 5000000;
-    swp.aln_path_size = 5000000;
-
-    return swp;
+#else
+static inline uint32_t bit_scan_forward (const uint32_t a) {
+	unsigned long r;
+	_BitScanForward(&r, a);		// defined in intrin.h for MS and Intel compilers
+	return r;
 }
+#endif
 
-DiffRunningData::DiffRunningData(const SW_Parameters& swp_in)
-{
-	swp = swp_in;
-	safe_malloc(query, char, swp.max_seq_size);
-	safe_malloc(target, char, swp.max_seq_size);
-	safe_malloc(DynQ, int, swp.row_size);
-	safe_malloc(DynT, int, swp.column_size);
-	align = new Alignment(swp.segment_aln_size);
-	result = new OutputStore(swp.max_aln_size);
-	safe_malloc(d_path, DPathData2, swp.d_path_size);
-	safe_malloc(aln_path, PathPoint, swp.aln_path_size);
+// Define bit-scan-reverse function. Gives index to highest set bit
+// (make sure to zero out unused high bits)
+#if defined (__GNUC__) || defined(__clang__)
+static inline uint32_t bit_scan_reverse(const uint32_t a) __attribute__ ((pure));
+static inline uint32_t bit_scan_reverse(const uint32_t a) {
+	uint32_t r;
+	__asm("bsrl %1, %0" : "=r"(r) : "r"(a) : );
+	return r;
 }
-
-DiffRunningData::~DiffRunningData()
-{
-	safe_free(query);
-	safe_free(target);
-	safe_free(DynQ);
-	safe_free(DynT);
-	delete align;
-	delete result;
-	safe_free(d_path);
-	safe_free(aln_path);
+#else
+static inline uint32_t bit_scan_reverse (const uint32_t a) {
+	unsigned long r;
+	_BitScanReverse(&r, a);		// defined in intrin.h for MS and Intel compilers
+	return r;
 }
+#endif
+#endif	// __SSEE2__
 
-void fill_m4record_from_output_store(const OutputStore& result, 
-									 const idx_t qid, 
-									 const idx_t sid,
-									 const char qstrand,
-									 const char sstrand,
-									 const idx_t qsize,
-									 const idx_t ssize,
-									 const idx_t q_off_in_aln, 
-									 const idx_t s_off_in_aln, 
-									 const idx_t q_ext,
-									 const idx_t s_ext,
-									 M4Record& m4)
-{
-	m4qid(m4) = qid;
-	m4sid(m4) = sid;
-	m4ident(m4) = result.ident;
-	m4vscore(m4) = 100;
-	m4qdir(m4) = 1 - (qstrand == 'F');
-	m4qoff(m4) = q_off_in_aln + result.query_start;
-	m4qend(m4) = q_off_in_aln + result.query_end;
-	m4qsize(m4) = qsize;
-	m4sdir(m4) = 1 - (sstrand == 'F');
-	m4soff(m4) = s_off_in_aln + result.target_start;
-	m4send(m4) = s_off_in_aln + result.target_end;
-	m4ssize(m4) = ssize;
-	m4qext(m4) = q_ext;
-	m4sext(m4) = s_ext;
-	
-	if (m4qdir(m4) == 1)
-	{
-		m4qoff(m4) = qsize - (q_off_in_aln + result.query_end);
-		m4qend(m4) = qsize - (q_off_in_aln + result.query_start);
-		m4qext(m4) = qsize - 1 - q_ext;
+static void fill_align(const std::string& query, const int q_offset, const std::string& target, const int t_offset, Alignment& align, const std::vector<DPathData>& d_path, int i, const std::vector<DPathIndex>& d_path_index, int d, std::vector<PathPoint>& aln_path, const int extend_forward) {
+	align.aln_q_e = d_path[i].x2;
+	align.aln_t_e = d_path[i].y2;
+	// get align path
+	int aln_idx(-1);
+	for (;;) {
+		aln_path[++aln_idx].set(d_path[i].x2, d_path[i].y2);
+		aln_path[++aln_idx].set(d_path[i].x1, d_path[i].y1);
+		if (--d == -1) {
+			break;
+		}
+		i = d_path_index[d].d_offset + (d_path[i].pre_k - d_path_index[d].min_k) / 2;
 	}
-	if (m4sdir(m4) == 1)
-	{
-		m4soff(m4) = ssize - (s_off_in_aln + result.target_end);
-		m4send(m4) = ssize - (s_off_in_aln + result.target_start);
-		m4sext(m4) = ssize - 1 - s_ext;
+	// walk backwards along align path to fill in sequence with gaps
+	align.clear();
+	int current_x(aln_path[aln_idx].x);
+	int current_y(aln_path[aln_idx].y);
+	if (extend_forward) {
+		const char* const query_p(query.data() + q_offset);
+		const char* const target_p(target.data() + t_offset);
+		for (--aln_idx; aln_idx != -1; --aln_idx) {
+			const int new_x(aln_path[aln_idx].x);
+			const int new_y(aln_path[aln_idx].y);
+			const int dx(new_x - current_x);
+			const int dy(new_y - current_y);
+			if (dx && dy) {		// dx always equals dy in this case
+				std::copy(query_p + current_x, query_p + new_x, &align.q_aln_str[align.current_size]);
+				std::copy(target_p + current_y, target_p + new_y, &align.t_aln_str[align.current_size]);
+				align.current_size += dx;
+			} else if (dx) {
+				std::copy(query_p + current_x, query_p + new_x, &align.q_aln_str[align.current_size]);
+				std::fill(&align.t_aln_str[align.current_size], &align.t_aln_str[align.current_size] + dx, GAP_VAL);
+				align.current_size += dx;
+			} else if (dy) {
+				std::fill(&align.q_aln_str[align.current_size], &align.q_aln_str[align.current_size] + dy, GAP_VAL);
+				std::copy(target_p + current_y, target_p + new_y, &align.t_aln_str[align.current_size]);
+				align.current_size += dy;
+			}
+			current_x = new_x;
+			current_y = new_y;
+		}
+	} else {
+		const char* const query_p(query.data() + q_offset + 1);
+		const char* const target_p(target.data() + t_offset + 1);
+		for (--aln_idx; aln_idx != -1; --aln_idx) {
+			const int new_x(aln_path[aln_idx].x);
+			const int new_y(aln_path[aln_idx].y);
+			const int dx(new_x - current_x);
+			const int dy(new_y - current_y);
+			if (dx && dy) {		// dx always equals dy in this case
+				align.current_size += dx;
+				const int offset(align.q_aln_str.size() - align.current_size);
+				std::copy(query_p - new_x, query_p - current_x, &align.q_aln_str[offset]);
+				std::copy(target_p - new_y, target_p - current_y, &align.t_aln_str[offset]);
+			} else if (dx) {
+				align.current_size += dx;
+				const int offset(align.q_aln_str.size() - align.current_size);
+				std::copy(query_p - new_x, query_p - current_x, &align.q_aln_str[offset]);
+				std::fill(&align.t_aln_str[offset], &align.t_aln_str[offset] + dx, GAP_VAL);
+			} else if (dy) {
+				align.current_size += dy;
+				const int offset(align.q_aln_str.size() - align.current_size);
+				std::fill(&align.q_aln_str[offset], &align.q_aln_str[offset] + dy, GAP_VAL);
+				std::copy(target_p - new_y, target_p - current_y, &align.t_aln_str[offset]);
+			}
+			current_x = new_x;
+			current_y = new_y;
+		}
 	}
 }
 
-void print_candidate(const CandidateStartPosition& csp)
-{
-	std::cout << "qoff = " << csp.qoff
-			  << ", toff = " << csp.toff
-			  << ", tstart = " << csp.tstart
-			  << ", tsize = " << csp.tsize
-			  << ", tid = " << csp.tid
-			  << ", num1 = " << csp.num1
-			  << ", num2 = " << csp.num2
-			  << ", score = " << csp.score
-			  << ",  chain = " << csp.chain
-			  << ", l1 = " << csp.left_q
-			  << ", r1 = " << csp.right_q
-			  << ", l2 = " << csp.left_t
-			  << ", r2 = " << csp.right_t
-			  << "\n";
-}
-
-int CompareDPathData2(const void* a, const void* b)
-{
-    const DPathData2* d1 = (const DPathData2*)a;
-    const DPathData2* d2 = (const DPathData2*)b;
-    return (d1->d == d2->d) ? (d1->k - d2->k) : (d1->d - d2->d);
-}
-
-struct SCompareDPathData2
-{
-    bool operator()(const DPathData2& a, const DPathData2& b)
-    { return (a.d == b.d) ? (a.k < b.k) : (a.d < b.d); }
-};
-
-DPathData2* GetDPathIdx(const int d, const int k, const unsigned int max_idx, DPathData2* base)
-{
-    DPathData2 target;
-    target.d = d;
-    target.k = k;
-    DPathData2* ret = (DPathData2*)bsearch(&target, base, max_idx, sizeof(DPathData2), CompareDPathData2);
-    return ret;
-}
-
-int Align(const char* query, const int q_len, const char* target, const int t_len, 
-          const int band_tolerance, const int get_aln_str, Alignment* align, 
-		  int* V, int* U, DPathData2* d_path, PathPoint* aln_path, 
-		  const int right_extend, double error_rate)
-{
-    int k_offset;
-    int  d;
-    int  k, k2;
-    int best_m;
-    int min_k, new_min_k, max_k, new_max_k, pre_k;
-    int x, y;
-    int ck, cd, cx, cy, nx, ny; 
-    int max_d, band_size;
-    unsigned long d_path_idx = 0, max_idx = 0;
-    int aln_path_idx, aln_pos, i, aligned = 0;
-    DPathData2* d_path_aux;
-    
-    max_d = (int)(2.0 * error_rate * (q_len + t_len));
-    k_offset = max_d;
-    band_size = band_tolerance * 2;
-    align->init();
-    best_m = -1;
-    min_k = 0;
-    max_k = 0;
-    d_path_idx = 0;
-    max_idx = 0;
-    
-    for (d = 0; d < max_d; ++d)
-    {
-        if (max_k - min_k > band_size) break;
-
-        for (k = min_k; k <= max_k; k += 2)
-        {
-            if( k == min_k || (k != max_k && V[k - 1 + k_offset] < V[k + 1 + k_offset]) )
-            { pre_k = k + 1; x = V[k + 1 + k_offset]; }
-            else 
-            { pre_k = k - 1; x = V[k - 1 + k_offset] + 1; }
-            y = x - k;
-            d_path[d_path_idx].d = d;
-            d_path[d_path_idx].k = k;
-            d_path[d_path_idx].x1 = x;
-            d_path[d_path_idx].y1 = y;
-			
-			if (right_extend)
-				while( x < q_len && y < t_len && query[x] == target[y]) { ++x; ++y; }
-			else
-				while( x < q_len && y < t_len && query[-x] == target[-y]) { ++x; ++y; }
-
-            d_path[d_path_idx].x2 = x;
-            d_path[d_path_idx].y2 = y;
-            d_path[d_path_idx].pre_k = pre_k;
-            ++d_path_idx;
-
-            V[k + k_offset] = x;
-            U[k + k_offset] = x + y;
-            best_m = std::max(best_m, x + y);
-            if (x >= q_len || y >= t_len)
-            { aligned = 1; max_idx = d_path_idx; break; }
-        }
-
-        // for banding
-        new_min_k = max_k;
-        new_max_k = min_k;
-        for (k2 = min_k; k2 <= max_k; k2 += 2)
-            if (U[k2 + k_offset] >= best_m - band_tolerance)
-            { new_min_k = std::min(new_min_k, k2); new_max_k = std::max(new_max_k, k2); }
-        max_k = new_max_k + 1;
-        min_k = new_min_k - 1;
-
-        if (aligned)
-        {
-            align->aln_q_e = x;
-            align->aln_t_e = y;
-            align->dist = d;
-            align->aln_str_size = (x + y + d) / 2;
-            align->aln_q_s = 0;
-            align->aln_t_s = 0;
-
-            if (get_aln_str)
-            {
-                cd = d;
-                ck = k;
-                aln_path_idx = 0;
-                while (cd >= 0 && aln_path_idx < q_len + t_len + 1)
-                {
-                    d_path_aux = GetDPathIdx(cd, ck, max_idx, d_path);
-                    aln_path[aln_path_idx].x = d_path_aux->x2;
-                    aln_path[aln_path_idx].y = d_path_aux->y2;
-                    ++aln_path_idx;
-                    aln_path[aln_path_idx].x = d_path_aux->x1;
-                    aln_path[aln_path_idx].y = d_path_aux->y1;
-                    ++aln_path_idx;
-                    ck = d_path_aux->pre_k;
-                    cd -= 1;
-                }
-                --aln_path_idx;
-                cx = aln_path[aln_path_idx].x;
-                cy = aln_path[aln_path_idx].y;
-                align->aln_q_s = cx;
-                align->aln_t_s = cy;
-                aln_pos = 0;
-                while (aln_path_idx > 0)
-                {
-                    --aln_path_idx;
-                    nx = aln_path[aln_path_idx].x;
-                    ny = aln_path[aln_path_idx].y;
-                    if (cx == nx && cy == ny) continue;
-                    if (cx == nx && cy != ny)
-                    {
-						if (right_extend)
-						{
-							for (i = 0; i < ny - cy; ++i) align->q_aln_str[aln_pos + i] = GAP_ALN;
-							for (i = 0; i < ny - cy; ++i) align->t_aln_str[aln_pos + i] = target[cy + i];
-						}
-						else
-						{
-							for (i = 0; i < ny - cy; ++i) align->q_aln_str[aln_pos + i] = GAP_ALN;
-							for (i = 0; i < ny - cy; ++i) align->t_aln_str[aln_pos + i] = target[-(cy + i)];
-						}
-                        aln_pos += ny - cy;
-                    }
-                    else if (cx != nx && cy == ny)
-                    {
-						if (right_extend)
-						{
-							for (i = 0; i < nx - cx; ++i) align->q_aln_str[aln_pos + i] = query[cx + i];
-							for (i = 0; i < nx - cx; ++i) align->t_aln_str[aln_pos + i] = GAP_ALN;
-						}
-						else
-						{
-							for (i = 0; i < nx - cx; ++i) align->q_aln_str[aln_pos + i] = query[-(cx + i)];
-							for (i = 0; i < nx - cx; ++i) align->t_aln_str[aln_pos + i] = GAP_ALN;
-						}
-                        aln_pos += nx - cx;
-                    }
-                    else
-                    {
-						if (right_extend)
-						{
-							for (i = 0; i < nx - cx; ++i) align->q_aln_str[aln_pos + i] = query[cx + i];
-							for (i = 0; i < ny - cy; ++i) align->t_aln_str[aln_pos + i] = target[cy + i];
-						}
-						else
-						{
-							for (i = 0; i < nx - cx; ++i) align->q_aln_str[aln_pos + i] = query[-(cx + i)];
-							for (i = 0; i < ny - cy; ++i) align->t_aln_str[aln_pos + i] = target[-(cy + i)];
-						}
-                        aln_pos += ny - cy;
-                    }
-                    cx = nx;
-                    cy = ny;
-                }
-                align->aln_str_size = aln_pos;
-            }
-            break;
-        }
-    }
-    if (align->aln_q_e == q_len || align->aln_t_e == t_len) return 1;
-    else return 0;
-}
-
-void dw_in_one_direction(const char* query, const int query_size, const char* target, const int target_size,
-						 int* U, int* V, Alignment* align, DPathData2* d_path, PathPoint* aln_path, 
-						 SW_Parameters* swp, OutputStore* result, const int right_extend, double error_rate)
-{
-	const idx_t ALN_SIZE = swp->segment_size;
-	const idx_t U_SIZE = swp->row_size;
-	const idx_t V_SIZE = swp->column_size;
-    int extend1 = 0, extend2 = 0;
-    const char* seq1 = query;
-    const char* seq2 = target;
-    int extend_size = std::min(query_size, target_size);
-    int seg_size;
-    int flag_end = 1;
-    int align_flag;
-    int i, j, k, num_matches;
-    while (flag_end)
-    {
-        if (extend_size > (ALN_SIZE + 100))
-        { seg_size = ALN_SIZE; }
-        else
-        { seg_size = extend_size; flag_end = 0; }
-        memset(U, 0, sizeof(int) * U_SIZE);
-        memset(V, 0, sizeof(int) * V_SIZE);
-        if (right_extend) { seq1 = query + extend1; seq2 = target + extend2; }
-        else { seq1 = query - extend1; seq2 = target - extend2; }
-        align_flag = Align(seq1, seg_size, seq2, seg_size, 0.3 * seg_size, 400, align, U, V, d_path, aln_path, right_extend, error_rate);
-        if (align_flag)
-        {
-            for (k = align->aln_str_size - 1, i = 0, j = 0, num_matches = 0; k > -1 && num_matches < 4; --k)
-            {
-                if (align->q_aln_str[k] != GAP_ALN) ++i;
-                if (align->t_aln_str[k] != GAP_ALN) ++j;
-                if (align->q_aln_str[k] == align->t_aln_str[k]) ++num_matches;
-                else num_matches = 0;
-            }
-            if (flag_end)
-            {
-                i = ALN_SIZE - align->aln_q_e + i;
-                j = ALN_SIZE - align->aln_t_e + j;
-                if (i == ALN_SIZE) align_flag = 0;
-				extend1 = extend1 + ALN_SIZE - i; extend2 = extend2 + ALN_SIZE - j;
-            }
-            else
-            {
-                i = extend_size - align->aln_q_e;
-                j = extend_size - align->aln_t_e;
-                if (i == extend_size) align_flag = 0;
-				extend1 += (extend_size - i); extend2 += (extend_size - j);
-                k = align->aln_str_size - 1;
-            }
-            if (align_flag)
-            {
-                if (right_extend)
-                {
-                    memcpy(result->right_store1 + result->right_store_size, align->q_aln_str, k + 1);
-                    memcpy(result->right_store2 + result->right_store_size, align->t_aln_str, k + 1);
-                    result->right_store_size += (k + 1);
-                }
-                else
-                {
-                    memcpy(result->left_store1 + result->left_store_size, align->q_aln_str, k + 1);
-                    memcpy(result->left_store2 + result->left_store_size, align->t_aln_str, k + 1);
-                    result->left_store_size += (k + 1);
-                }
-                extend_size = std::min(query_size - extend1, target_size - extend2);
-            }
-        }
-        if (!align_flag) break;
-    }
-}
-
-int  dw(const char* query, const int query_size, const int query_start,
-        const char* target, const int target_size, const int target_start,
-        int* U, int* V, Alignment* align, DPathData2* d_path, 
-        PathPoint* aln_path, OutputStore* result, SW_Parameters* swp,
-	    double error_rate, const int min_aln_size)
-{
-    result->init();
-    align->init();
-    // left extend
-    dw_in_one_direction(query + query_start - 1, query_start,
-						target + target_start - 1, target_start,
-						U, V, align, d_path, aln_path, swp, result, 
-						0, error_rate);
-    align->init();
-    // right extend
-    dw_in_one_direction(query + query_start, query_size - query_start,
-						target + target_start, target_size - target_start,
-						U, V, align, d_path, aln_path, swp, result, 
-						1, error_rate);
-
-    // merge the results
-    int i, j, k, idx = 0;
-    const char* encode2char = "ACGT-";
-    for (k = result->left_store_size - 1, i = 0, j = 0; k > - 1; --k, ++idx)
-    {
-		unsigned char ch = result->left_store1[k];
-		r_assert(ch >= 0 && ch <= 4);
-		ch = encode2char[ch];
-		result->out_store1[idx] = ch;
-		if (ch != '-') ++i;
-		
-		ch = result->left_store2[k];
-		r_assert(ch >= 0 && ch <= 4);
-		ch = encode2char[ch];
-		result->out_store2[idx] = ch;
-		if (ch != '-')++j;
-    }
-    result->query_start = query_start - i;
-	if (result->query_start < 0)
-	{
-		std::cerr << "query_start = " << query_start << ", i = " << i << "\n";
+static int Align(const int extend_size, const std::string& query, const int q_offset, const std::string& target, const int t_offset, Alignment& align, std::vector<int>& q_extent, std::vector<int>& combined_match_length, std::vector<DPathData>& d_path, std::vector<DPathIndex>& d_path_index, std::vector<PathPoint>& aln_path, const int extend_forward, const double error_rate) {
+	// if these constants are changed, DiffRunningData buffer sizes
+	// in dw.h should also be changed
+	const int k_offset(extend_size * 4 * error_rate);
+	const int band_tolerance(extend_size * 3 / 10);
+	const int max_band_size(band_tolerance * 2 + 1);
+	const char* const q_ptr_start(query.data() + q_offset);
+	const char* const t_ptr_start(target.data() + t_offset);
+	int d_path_idx(0), best_combined_match_length(0);
+	int best(-1), best_score(-k_offset);
+	q_extent[k_offset + 1] = 0;	// initialize starting point
+	// extend_forward only affects innermost loop, but let's move it
+	// outside as a loop invariant
+	if (extend_forward) {
+		for (int d(0), min_k(0), max_k(0); d != k_offset && max_k - min_k < max_band_size; ++d) {
+			// starting point of each "d" set of entries
+			d_path_index[d].set(d_path_idx, min_k);
+			for (int k(min_k); k <= max_k; k += 2) {
+				int pre_k, q_pos;
+				if (k == min_k || (k != max_k && q_extent[k_offset + k - 1] < q_extent[k_offset + k + 1])) {
+					pre_k = k + 1;
+					q_pos = q_extent[k_offset + k + 1];
+				} else {
+					pre_k = k - 1;
+					q_pos = q_extent[k_offset + k - 1] + 1;
+				}
+				int t_pos(q_pos - k);
+				// start of exact match
+				const int q_start(q_pos), t_start(t_pos);
+				// find the other end of exact match
+				const char* q_ptr(q_ptr_start + q_pos);
+				const char* t_ptr(t_ptr_start + t_pos);
+#ifdef __SSE2__
+				// vectorization of loop using gnu intrinsics
+				__m128i a16, b16, c16;
+				// round down to nearest multiple of 16
+				const char* end_q(q_ptr + ((extend_size - std::max(q_pos, t_pos)) & (~0xf)));
+				for (; q_ptr != end_q; q_ptr += 16, t_ptr += 16) {
+					// load vector registers
+					a16 = _mm_loadu_si128((const __m128i*)q_ptr);
+					b16 = _mm_loadu_si128((const __m128i*)t_ptr);
+					c16 = _mm_cmpeq_epi8(a16, b16);	// compare registers
+					// create mask with 1 == true for each position
+					const uint32_t x(_mm_movemask_epi8(c16));
+					// if not all true, find first false
+					if (x != 0xffff) {
+						const int b(bit_scan_forward(~x));
+						q_ptr += b;
+						t_ptr += b;
+						break;
+					}
+				}
+				if (q_ptr == end_q) {       // deal with remainder
+					end_q += (extend_size - std::max(q_pos, t_pos)) & 0xf;
+					for (; q_ptr != end_q && *q_ptr == *t_ptr; ++q_ptr, ++t_ptr) { }
+				}
+#else
+				const char* const end_q(q_ptr + extend_size - std::max(q_pos, t_pos));
+				for (; q_ptr != end_q && *q_ptr == *t_ptr; ++q_ptr, ++t_ptr) { }
+#endif	// __SSE2__
+				q_pos = q_ptr - q_ptr_start;
+				t_pos = t_ptr - t_ptr_start;
+				d_path[d_path_idx].set(q_start, t_start, q_pos, t_pos, pre_k);
+				// see if we reached the end
+				const int score(q_pos + t_pos);
+				if ((q_pos == extend_size || t_pos == extend_size) && best_score < score) {
+					best_score = score;
+					best = d_path_idx;
+				}
+				++d_path_idx;
+				q_extent[k_offset + k] = q_pos;
+				combined_match_length[k_offset + k] = score;
+				if (best_combined_match_length < score) {
+					best_combined_match_length = score;
+				}
+			}
+			if (best != -1) {	// finished alignment
+				fill_align(query, q_offset, target, t_offset, align, d_path, best, d_path_index, d, aln_path, extend_forward);
+				return 1;
+			}
+			// shift ends to one outside "good" band
+			const int cutoff(best_combined_match_length - band_tolerance);
+			for (; combined_match_length[k_offset + min_k] < cutoff; min_k += 2) { }
+			--min_k;
+			for (; combined_match_length[k_offset + max_k] < cutoff; max_k -= 2) { }
+			++max_k;
+		}
+	} else {
+		for (int d(0), min_k(0), max_k(0); d != k_offset && max_k - min_k < max_band_size; ++d) {
+			// starting point of each "d" set of entries
+			d_path_index[d].set(d_path_idx, min_k);
+			for (int k(min_k); k <= max_k; k += 2) {
+				int pre_k, q_pos;
+				if (k == min_k || (k != max_k && q_extent[k_offset + k - 1] < q_extent[k_offset + k + 1])) {
+					pre_k = k + 1;
+					q_pos = q_extent[k_offset + k + 1];
+				} else {
+					pre_k = k - 1;
+					q_pos = q_extent[k_offset + k - 1] + 1;
+				}
+				int t_pos(q_pos - k);
+				// start of exact match
+				const int q_start(q_pos), t_start(t_pos);
+				// find the other end of exact match
+#ifdef __SSE2__
+				// vectorization of above loop
+				__m128i a16, b16, c16;
+				const char* q_ptr(q_ptr_start - q_pos - 15);
+				const char* t_ptr(t_ptr_start - t_pos - 15);
+				// round down to nearest multiple of 16
+				const char* end_q(q_ptr - ((extend_size - std::max(q_pos, t_pos)) & (~0xf)));
+				for (; q_ptr != end_q; q_ptr -= 16, t_ptr -= 16) {
+					// load vector registers
+					a16 = _mm_loadu_si128((const __m128i*)q_ptr);
+					b16 = _mm_loadu_si128((const __m128i*)t_ptr);
+					c16 = _mm_cmpeq_epi8(a16, b16);	// compare registers
+					// create mask with 1 == true for each position
+					const uint32_t x(_mm_movemask_epi8(c16));
+					// if not all true, find first false
+					if (x != 0xffff) {
+						// have to mask high bits
+						const int b(bit_scan_reverse(0xffff & (~x)));
+						// technically, += 15 - (15 - b)
+						q_ptr += b;
+						t_ptr += b;
+						break;
+					}
+				}
+				if (q_ptr == end_q) {       // deal with remainder
+					q_ptr += 15;
+					t_ptr += 15;
+					end_q = q_ptr - ((extend_size - std::max(q_pos, t_pos)) & 0xf);
+					for (; q_ptr != end_q && *q_ptr == *t_ptr; --q_ptr, --t_ptr) { }
+				}
+#else
+				const char* q_ptr(q_ptr_start - q_pos);
+				const char* t_ptr(t_ptr_start - t_pos);
+				const char* const end_q(q_ptr - extend_size + std::max(q_pos, t_pos));
+				for (; q_ptr != end_q && *q_ptr == *t_ptr; --q_ptr, --t_ptr) { }
+#endif	// __SSE2__
+				q_pos = q_ptr_start - q_ptr;
+				t_pos = t_ptr_start - t_ptr;
+				d_path[d_path_idx].set(q_start, t_start, q_pos, t_pos, pre_k);
+				// see if we reached the end
+				const int score(q_pos + t_pos);
+				if ((q_pos == extend_size || t_pos == extend_size) && best_score < score) {
+					best_score = score;
+					best = d_path_idx;
+				}
+				++d_path_idx;
+				q_extent[k_offset + k] = q_pos;
+				combined_match_length[k_offset + k] = score;
+				if (best_combined_match_length < score) {
+					best_combined_match_length = score;
+				}
+			}
+			if (best != -1) {	// finished alignment
+				fill_align(query, q_offset, target, t_offset, align, d_path, best, d_path_index, d, aln_path, extend_forward);
+				return 1;
+			}
+			// shift ends to one outside "good" band
+			const int cutoff(best_combined_match_length - band_tolerance);
+			for (; combined_match_length[k_offset + min_k] < cutoff; min_k += 2) { }
+			--min_k;
+			for (; combined_match_length[k_offset + max_k] < cutoff; max_k -= 2) { }
+			++max_k;
+		}
 	}
-	r_assert(result->query_start >= 0);
-    result->target_start = target_start - j;
-	r_assert(result->target_start >= 0);
-    for (k = 0, i = 0, j = 0; k < result->right_store_size; ++k, ++idx)
-    {
-
-		unsigned char ch = result->right_store1[k];
-		r_assert(ch >= 0 && ch <= 4);
-		ch = encode2char[ch];
-		result->out_store1[idx] = ch;
-		if (ch != '-') ++i;
-		
-		ch = result->right_store2[k];
-		r_assert(ch >= 0 && ch <= 4);
-		ch = encode2char[ch];
-		result->out_store2[idx] = ch;
-		if (ch != '-') ++j;
-    }
-    result->out_store_size = idx;
-    result->query_end = query_start + i;
-    result->target_end = target_start + j;
-
-	if (result->out_store_size >= min_aln_size)
-    {
-        int mat = 0, mis = 0, ins = 0, del = 0;
-        for (j = 0; j < result->out_store_size; ++j)
-        {
-            if (result->out_store1[j] == result->out_store2[j])
-            {
-                ++mat;
-                result->out_match_pattern[j] = '|';
-            }
-            else if (result->out_store1[j] == '-')
-            {
-                ++ins;
-                result->out_match_pattern[j] = '*';
-            }
-            else if (result->out_store2[j] == '-')
-            {
-                ++del;
-                result->out_match_pattern[j] = '*';
-            }
-            else
-            {
-                ++mis;
-                result->out_match_pattern[j] = '*';
-            }
-        }
-        result->out_store1[result->out_store_size] = '\0';
-        result->out_store2[result->out_store_size] = '\0';
-        result->out_match_pattern[result->out_store_size] = '\0';
-        result->mat = mat;
-        result->mis = mis;
-        result->ins = ins;
-        result->del = del;
-        result->ident = 100.0 * mat / result->out_store_size;
-
-        return 1;
-    }
-    return 0;
+	return 0;	// couldn't complete alignemnt
 }
 
-bool GetAlignment(const char* query, const int query_start, const int query_size,
-				  const char* target, const int target_start, const int target_size,
-				  DiffRunningData* drd, M5Record& m5, double error_rate,
-				  const int min_aln_size)
-{
-	int flag = dw(query, query_size, query_start,
-				  target, target_size, target_start,
-				  drd->DynQ, drd->DynT, 
-				  drd->align, drd->d_path,
-				  drd->aln_path, drd->result,
-				  &drd->swp, error_rate, min_aln_size);
-	if (!flag) return false;
-	
-	int qrb = 0, qre = 0;
-	int trb = 0, tre = 0;
-	int eit = 0, k = 0;
-	const int consecutive_match_region_size = 4;
-	for (k = 0; k < drd->result->out_store_size && eit < consecutive_match_region_size; ++k)
-	{
-		const char qc = drd->result->out_store1[k];
-		const char tc = drd->result->out_store2[k];
-		if (qc != '-') ++qrb;
-		if (tc != '-') ++trb;
-		if (qc == tc) ++eit;
-		else eit = 0;
+static void dw_in_one_direction(const std::string& query, const int q_offset, const std::string& target, const int t_offset, std::vector<int>& U, std::vector<int>& V, Alignment& align, std::vector<DPathData>& d_path, std::vector<DPathIndex>& d_path_index, std::vector<PathPoint>& aln_path, const int segment_size, OutputStore& result, const int extend_forward, const double error_rate) {
+	const int q_extend_max(extend_forward ? query.size() - q_offset : q_offset + 1);
+	const int t_extend_max(extend_forward ? target.size() - t_offset : t_offset + 1);
+	// amount we've already extended
+	int q_extend(0), t_extend(0), not_at_end(1);
+	do {
+		// size left to extend
+		const int extend_size(std::min(q_extend_max - q_extend, t_extend_max - t_extend));
+		if (extend_size <= segment_size + SEGMENT_BORDER) { // close enough to the end
+			not_at_end = 0;
+		}
+		if (!Align(not_at_end ? segment_size : extend_size, query, q_offset + (extend_forward ? q_extend : -q_extend), target, t_offset + (extend_forward ? t_extend : -t_extend), align, U, V, d_path, d_path_index, aln_path, extend_forward, error_rate)) {
+			return;
+		}
+		int k;
+		if (not_at_end) {
+			// go backwards until we find a good match (4 consecutive
+			// matching basepairs), counting non-gap basepairs
+			int q_bps(0), t_bps(0), num_matches(0);
+			if (extend_forward) {
+				for (k = align.current_size - 1; k != -1; --k) {
+					const uint8_t qc(align.q_aln_str[k]);
+					const uint8_t tc(align.t_aln_str[k]);
+					if (qc != tc) {
+						num_matches = 0;
+						if (qc == GAP_VAL) {
+							--q_bps;
+						} else if (tc == GAP_VAL) {
+							--t_bps;
+						}
+					} else if (++num_matches == 4) {
+						break;
+					}
+				}
+				q_bps += align.current_size - k;
+				t_bps += align.current_size - k;
+			} else {
+				const int offset(align.q_aln_str.size() - align.current_size);
+				for (k = offset; k != static_cast<int>(align.q_aln_str.size()); ++k) {
+					const uint8_t qc(align.q_aln_str[k]);
+					const uint8_t tc(align.t_aln_str[k]);
+					if (qc != tc) {
+						num_matches = 0;
+						if (qc == GAP_VAL) {
+							--q_bps;
+						} else if (tc == GAP_VAL) {
+							--t_bps;
+						}
+					} else if (++num_matches == 4) {
+						++k;	// don't include final match
+						break;
+					}
+				}
+				q_bps += k - offset;
+				t_bps += k - offset;
+			}
+			if (align.aln_q_e == q_bps) {	// no good match
+				return;
+			}
+			// don't extend into the good match; keeping
+			// good match for next alignment, maybe?
+			q_extend += align.aln_q_e - q_bps;
+			t_extend += align.aln_t_e - t_bps;
+		} else if (align.aln_q_e == 0) {	// no good match
+			return;
+		} else if (extend_forward) {
+			k = align.current_size;
+		} else {
+			k = align.q_aln_str.size() - align.current_size;
+		}
+		if (extend_forward) {
+			const int offset(result.buffer_start + result.right_size);
+			std::copy(&align.q_aln_str[0], &align.q_aln_str[0] + k, &result.q_buffer[offset]);
+			std::copy(&align.t_aln_str[0], &align.t_aln_str[0] + k, &result.t_buffer[offset]);
+			result.right_size += k;
+		} else {
+			result.left_size += align.q_aln_str.size() - k;
+			const int offset(result.buffer_start - result.left_size);
+			std::copy(&align.q_aln_str[k], &align.q_aln_str[0] + align.q_aln_str.size(), &result.q_buffer[offset]);
+			std::copy(&align.t_aln_str[k], &align.t_aln_str[0] + align.q_aln_str.size(), &result.t_buffer[offset]);
+		}
+	} while (not_at_end);
+}
+
+static int gap_count(const std::vector<uint8_t>& buffer, int i, const int end_i) {
+	int j(0);
+	for (; i != end_i; ++i) {
+		if (buffer[i] == GAP_VAL) {
+			++j;
+		}
 	}
-	if (eit < consecutive_match_region_size) return false;
-	k -= consecutive_match_region_size;
-	qrb -= consecutive_match_region_size;
-	trb -= consecutive_match_region_size;
-	const int start_aln_id = k;
-	if (start_aln_id < 0)
-	{
-		std::cout << qrb << "\t" << trb << "\t" << eit << "\t" << k << "\n";
+	return j;
+}
+
+static int dw(const std::string& query, const int query_start, const std::string& target, const int target_start, std::vector<int>& U, std::vector<int>& V, Alignment& align, std::vector<DPathData>& d_path, std::vector<DPathIndex>& d_path_index, std::vector<PathPoint>& aln_path, OutputStore& result, const int segment_size, const double error_rate, const int min_aln_size) {
+	result.clear(query_start + target_start);
+	// reverse extend (left side)
+	dw_in_one_direction(query, query_start - 1, target, target_start - 1, U, V, align, d_path, d_path_index, aln_path, segment_size, result, 0, error_rate);
+	// forward extend (right side)
+	dw_in_one_direction(query, query_start, target, target_start, U, V, align, d_path, d_path_index, aln_path, segment_size, result, 1, error_rate);
+	if (result.left_size + result.right_size < min_aln_size) {
+		return 0;
 	}
-	
-	for (k = drd->result->out_store_size - 1, eit = 0; k >= 0 && eit < consecutive_match_region_size; --k)
-	{
-		const char qc = drd->result->out_store1[k];
-		const char tc = drd->result->out_store2[k];
-		if (qc != '-') ++qre;
-		if (tc != '-') ++tre;
-		if (qc == tc) ++eit;
-		else eit = 0;
+	const int left_start(result.buffer_start - result.left_size);
+	const int right_end(result.buffer_start + result.right_size);
+	result.query_start = query_start - result.left_size + gap_count(result.q_buffer, left_start, result.buffer_start);
+	result.query_end = query_start + result.right_size - gap_count(result.q_buffer, result.buffer_start, right_end);
+	result.target_start = target_start - result.left_size + gap_count(result.t_buffer, left_start, result.buffer_start);
+	result.target_end = target_start + result.right_size - gap_count(result.t_buffer, result.buffer_start, right_end);
+	return 1;
+}
+
+static void decode_sequence(std::string& out_seq, const std::vector<uint8_t>& in_seq, const size_t offset, const size_t size) {
+	out_seq.resize(size);
+	for (size_t i(0); i != size; ++i) {
+		out_seq[i] = "ACGT-"[in_seq[offset + i]];
 	}
-	if (eit < consecutive_match_region_size) return false;
+}
+
+int GetAlignment(const std::string& query, const int query_start, const std::string& target, const int target_start, DiffRunningData& drd, M5Record& m5, const double error_rate, const int min_aln_size) {
+	if (!dw(query, query_start, target, target_start, drd.DynQ, drd.DynT, drd.align, drd.d_path, drd.d_path_index, drd.aln_path, drd.result, drd.segment_size, error_rate, min_aln_size)) {
+		return 0;
+	}
+	// create return m5 record
+	const OutputStore& result(drd.result);
+	const int consecutive_match_region_size(4);
+	// trim starting end of alignment
+	int qrb(0);	// q starting basepair offset to good sequence
+	int trb(0);	// t starting basepair offset to good sequence
+	int eit(0);	// matching run length
+	const int start_k(result.buffer_start - result.left_size);
+	const int end_k(result.buffer_start + result.right_size);
+	int k(start_k);
+	for (; k != end_k; ++k) {
+		const uint8_t qc(result.q_buffer[k]);
+		const uint8_t tc(result.t_buffer[k]);
+		if (qc != tc) {
+			eit = 0;
+			// we don't count gaps
+			if (qc == GAP_VAL) {
+				--qrb;
+			} else if (tc == GAP_VAL) {
+				--trb;
+			}
+		} else if (++eit == consecutive_match_region_size) {
+			break;
+		}
+	}
+	if (eit != consecutive_match_region_size) {	// no good match
+		return 0;
+	}
+	// +1 for the ++k we skipped with the break
+	const int start_aln_id(k + 1 - consecutive_match_region_size);
+	qrb += start_aln_id - start_k;
+	trb += start_aln_id - start_k;
+	// trim trailing end of alignment
+	int qre(0);	// q ending basepair offset to good sequence
+	int tre(0);	// t ending basepair offset to good sequence
+	eit = 0;	// still matching run length
+	for (k = end_k - 1;; --k) {
+		const uint8_t qc(result.q_buffer[k]);
+		const uint8_t tc(result.t_buffer[k]);
+		if (qc != tc) {
+			eit = 0;
+			// we don't count gaps
+			if (qc == GAP_VAL) {
+				--qre;
+			} else if (tc == GAP_VAL) {
+				--tre;
+			}
+		} else if (++eit == consecutive_match_region_size) {
+			break;
+		}
+	}
+	// --k we skipped in the break is countered by +1 for end-inclusion
 	k += consecutive_match_region_size;
-	qre -= consecutive_match_region_size;
-	tre -= consecutive_match_region_size;
-	const int end_aln_id = k + 1;
-	
-	m5qsize(m5) = query_size;
-	m5qoff(m5) = drd->result->query_start + qrb;
-	m5qend(m5) = drd->result->query_end - qre;
-	m5qdir(m5) = FWD;
-
-	m5ssize(m5) = target_size;
-	m5soff(m5) = drd->result->target_start + trb;
-	m5send(m5) = drd->result->target_end - tre;
-	m5sdir(m5) = FWD;
-
-	const int aln_size = end_aln_id - start_aln_id;
-
-	memcpy(m5qaln(m5), drd->result->out_store1 + start_aln_id, aln_size);
-	memcpy(m5saln(m5), drd->result->out_store2 + start_aln_id, aln_size);
-	memcpy(m5pat(m5), drd->result->out_match_pattern + start_aln_id, aln_size);
-	m5qaln(m5)[aln_size] = '\0';
-	m5saln(m5)[aln_size] = '\0';
-	m5pat(m5)[aln_size] = '\0';
-	
-	return true;
+	qre += end_k - k;
+	tre += end_k - k;
+	m5.qoff = result.query_start + qrb;
+	m5.qend = result.query_end - qre;
+	m5.soff = result.target_start + trb;
+	m5.send = result.target_end - tre;
+	// +1 to make this end-inclusive
+	const size_t aln_size(k - start_aln_id);
+	decode_sequence(m5.qaln, result.q_buffer, start_aln_id, aln_size);
+	decode_sequence(m5.saln, result.t_buffer, start_aln_id, aln_size);
+	return 1;
 }
-
-} // end namespace ns_banded_sw

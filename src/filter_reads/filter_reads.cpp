@@ -6,7 +6,7 @@
 
 using namespace std;
 
-typedef index_t idx;
+typedef idx_t idx;
 
 void print_usage(const char* prog)
 {

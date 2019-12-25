@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <stdint.h>
-
+#include <iomanip>	// fixed, setprecision()
 #include <iostream>
 #include <sstream>
 
@@ -19,7 +19,7 @@ typedef uint64_t    u8_t;
 typedef i8_t        idx_t;
 
 typedef u1_t		uint1;
-typedef idx_t		index_t;
+//typedef idx_t		index_t;	// solaris conflict
 
 #define INVALID_IDX (-1)
 
@@ -89,14 +89,14 @@ do { \
 do { \
     size_t __sm__sz__ = sizeof(type) * (count); \
     (arr) = (type *)malloc(__sm__sz__); \
-    if (!(arr)) ERROR("malloc fail"); \
+    if (!(arr)) ERROR("malloc fail: %lu * %lu = %lu", sizeof(type), size_t(count), __sm__sz__); \
 } while(0)
 
 #define safe_calloc(arr, type, count) \
 do { \
     size_t __sc__sz__ = sizeof(type) * (count); \
     (arr) = (type *)calloc(1, __sc__sz__); \
-    if (!(arr)) ERROR("calloc fail"); \
+    if (!(arr)) ERROR("calloc fail: %lu * %lu = %lu", sizeof(type), size_t(count), __sc__sz__); \
 } while(0)
 
 #define safe_realloc(arr, type, count) \
@@ -105,6 +105,7 @@ do { \
 	arr = (type *)realloc(arr, __sr__size__); \
 	if (!arr) \
 	{ \
+		ERROR("failed to realloc memory: %lu * %lu = %lu", sizeof(type), size_t(count), __sr__size__); \
 		ERROR("failed to realloc memory."); \
 		exit(1); \
 	} \
@@ -162,32 +163,33 @@ do { \
 
 #include <sys/time.h>
 
-struct Timer
-{
-    struct timeval start;
-    struct timeval end;
-
-    void go() { gettimeofday(&start, NULL); }
-    void stop() { gettimeofday(&end, NULL); }
-    double elapsed() { return end.tv_sec - start.tv_sec + 1.0 * (end.tv_usec - start.tv_usec) / 1000000; }
+struct Timer {
+	struct timeval start;
+	struct timeval end;
+	void go() {
+		gettimeofday(&start, NULL);
+	}
+	void stop() {
+		gettimeofday(&end, NULL);
+	}
+	double elapsed() const {
+		return end.tv_sec - start.tv_sec + double(end.tv_usec - start.tv_usec) / 1000000;
+	}
 };
 
-struct DynamicTimer
-{
-	DynamicTimer(const char* func) : m_func(func) 
-	{ 
-		if (m_func) fprintf(stderr, "[%s] begins.\n", m_func);
-		timer.go(); 
+class DynamicTimer {
+    public:
+	explicit DynamicTimer(const char* const func) : m_func(func) { 
+		std::cerr << "[" << m_func << "] begins.\n";
+		m_timer.go(); 
 	}
-	~DynamicTimer() 
-	{
-		timer.stop();
-		fprintf(stderr, "[%s] takes %.2f secs.\n", m_func, timer.elapsed());
+	~DynamicTimer() {
+		m_timer.stop();
+		std::cerr << "[" << m_func << "] takes " << std::fixed << std::setprecision(2) << m_timer.elapsed() << " secs.\n";
 	}
-	
-private:
-	const char* m_func;
-	Timer timer;
+    private:
+	const std::string m_func;
+	Timer m_timer;
 };
 
 const u1_t* get_dna_encode_table();

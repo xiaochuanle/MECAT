@@ -5,7 +5,7 @@ using namespace std;
 
 int find_location(int *t_loc,int *t_seedn,int *t_score,long *loc,int k,int *rep_loc,float len,int read_len1, double ddfs_cutoff)
 {
-    int i,j,maxval=0,maxi,rep=0,lasti=0;
+    int i,j,maxval=0,maxi=0,rep=0,lasti=0;
     for(i=0; i<k; i++)t_score[i]=0;
     for(i=0; i<k-1; i++)for(j=i+1; j<k; j++)if(t_seedn[j]-t_seedn[i]>0&&t_loc[j]-t_loc[i]>0&&t_loc[j]-t_loc[i]<read_len1&&fabs((t_loc[j]-t_loc[i])/((t_seedn[j]-t_seedn[i])*len)-1)<ddfs_cutoff)
             {

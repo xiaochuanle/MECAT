@@ -12,6 +12,48 @@ struct ExtensionCandidate
 	int score;
 };
 
+typedef ExtensionCandidate Overlap;
+
+// candidates only use a few of these values, so make a smaller structure for them;
+// sid and qid are used a lot, and we sort on score, so stash qdir inside msb of qext
+
+struct ExtensionCandidateCompressed {
+	uint32_t sid, qid, sext, qext_, score;
+	int qdir() const {
+		return qext_ & MSB_ ? REV : FWD;
+	}
+	int qext() const {
+		return qext_ & ~MSB_;
+	}
+	void set_qext(const uint32_t new_qext, const int new_qdir) {
+		qext_ = new_qdir == FWD ? new_qext : new_qext | MSB_;
+	}
+	void set(const ExtensionCandidate& a) {
+		sid = a.sid;
+		qid = a.qid;
+		sext = a.sext;
+		// sdir is forced to FWD, so swap qdir is sdir is REV
+		qext_ = a.qdir == a.sdir ? a.qext : a.qext | MSB_;
+		score = a.score;
+	}
+	void set_swap(const ExtensionCandidate& a) {		// swap s and q
+		sid = a.qid;
+		qid = a.sid;
+		sext = a.qext;
+		qext_ = a.sdir == a.qdir ? a.sext : a.sext | MSB_;
+		score = a.score;
+	}
+	// (these two are set in alignment.cpp, as std::numeric_limits<>
+	// can't be used at compile time)
+	// used to check conversions from type int; need to use int64_t in case
+	// int is only int32_t in size (which wouldn't hold uint32_t max)
+	static const int64_t max_value;
+	// account for using MSB for qdir
+	static const int64_t max_qext;
+    private:
+	static const uint32_t MSB_ = 1 << (sizeof(uint32_t) * 8 - 1);
+};
+
 std::istream&
 operator>>(std::istream& in, ExtensionCandidate& ec);
 
@@ -184,110 +226,5 @@ m4_to_candidate(const M4Record& m4, ExtensionCandidate& ec)
 	ec.send = m4send(m4);
 	ec.score = m4vscore(m4);
 }
-
-struct M5Record
-{
-	idx_t qid;		// 1) qname
-	idx_t qsize;  	// 2) qlength
-	idx_t qstart; 	// 3) qstart
-	idx_t qend;		// 4) qend
-	int     qdir;		// 5) qstrand
-	idx_t sid;		// 6) sname
-	idx_t ssize;		// 7) slength
-	idx_t sstart;		// 8) sstart
-	idx_t send;		// 9) send
-	int     sdir;		// 10) sstrand
-	int     score;		// 11) score
-	int     mat;		// 12) match
-	int		mis; 	    // 13) mismatch
-	int     ins;		// 14) insertion
-	int		dels;		// 15) deletion
-	int		mapq;		// 16) mapQ
-	char*   pm_q;		// 17) aligned query
-	char*   pm_p;		// 18) aligned pattern
-	char*   pm_s;		// 19) aligned subject
-	double	ident;		// 20) identity percentage
-	idx_t	qext;
-	idx_t 	sext;
-};
-
-#define m5qid(m) 		((m).qid)
-#define m5qsize(m)		((m).qsize)
-#define m5qoff(m)		((m).qstart)
-#define m5qend(m)		((m).qend)
-#define m5qdir(m)		((m).qdir)
-#define m5sid(m)		((m).sid)
-#define m5ssize(m)		((m).ssize)
-#define m5soff(m)		((m).sstart)
-#define m5send(m)		((m).send)
-#define m5sdir(m)		((m).sdir)
-#define m5score(m)		((m).score)
-#define m5mat(m)		((m).mat)
-#define m5mis(m)		((m).mis)
-#define m5ins(m)		((m).ins)
-#define m5dels(m)		((m).dels)
-#define m5mapq(m)		((m).mapq)
-#define m5qaln(m)		((m).pm_q)
-#define m5pat(m)		((m).pm_p)
-#define m5saln(m)		((m).pm_s)
-#define m5ident(m)		((m).ident)
-#define m5qext(m)		((m).qext)
-#define m5sext(m)		((m).sext)
-
-void PrintM5Record(std::ostream& out, const M5Record& m5, const int printAln);
-void InitM5Record(M5Record& m5);
-void DestroyM5Record(M5Record& m5);
-
-inline M5Record* NewM5Record(idx_t maxAlnSize)
-{
-	M5Record* m5 = new M5Record;
-	m5qaln(*m5) = new char[maxAlnSize];
-	m5saln(*m5) = new char[maxAlnSize];
-	m5pat(*m5) = new char[maxAlnSize];
-	
-	return m5;
-}
-
-inline M5Record* DeleteM5Record(M5Record* m5)
-{
-	if (!m5) return NULL;
-	delete[] m5qaln(*m5);
-	delete[] m5saln(*m5);
-	delete[] m5pat(*m5);
-	delete m5;
-	return NULL;
-}
-
-inline int M5RecordOvlpSize(const M5Record& m)
-{
-	int oq = m5qend(m) - m5qoff(m);
-	int os = m5send(m) - m5soff(m);
-	return std::max(oq, os);
-}
-
-//struct Overlap
-//{
-//    index_t qid, qoff, qend, qsize, qext;
-//    int qdir;
-//    index_t sid, soff, send, ssize, sext;
-//    int sdir;
-//};
-
-typedef ExtensionCandidate Overlap;
-
-struct CompareOverlapBySid
-{
-    bool operator()(const Overlap& a, const Overlap& b)
-    {
-        return a.sid < b.sid;
-    }
-};
-
-struct CnsResult
-{
-	idx_t id;
-	idx_t range[2];
-	std::string seq;
-};
 
 #endif // ALIGNMENT_H

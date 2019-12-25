@@ -163,8 +163,9 @@ static void creat_ref_index(char *fastafile)
             assert(fscanf(fasta,"%[^\n]s",nameall) == 1);
 			if (rsize) fprintf(fastaindex, "%ld\n", rsize);
 			rsize = 0;
-			for(i=0;i<strlen(nameall);i++)if(nameall[i]==' '||nameall[i]=='\t')break;
-			nameall[i]='\0';
+			size_t j;
+			for(j=0;j<strlen(nameall);j++)if(nameall[j]==' '||nameall[j]=='\t')break;
+			nameall[j]='\0';
             fprintf(fastaindex,"%ld\t%s\t",count,nameall);
         }
         else if(ch!='\n'&&ch!='\r')

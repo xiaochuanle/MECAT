@@ -18,7 +18,7 @@ public:
     typedef PODArray<char>  OneDataLine;
 
 public:
-    BufferLineReader(const char* file_name);
+    explicit BufferLineReader(const char* file_name);
     ~BufferLineReader();
     OneDataLine& get_line()
     { return line_; }
@@ -29,8 +29,10 @@ public:
         --line_number_;
         unget_line_ = true;
     }
-    idx_t line_number() { return line_number_; }
     idx_t line_number() const { return line_number_; }
+    std::streampos tellg() const { return ins_->tellg() - (buf_sz_ - cur_) - (unget_line_ ? line_.size() + eol_length_ : 0); }
+    // note that line_number() is not accurate after this call
+    void seekg(std::streampos pos) { ins_->seekg(pos); x_read_buffer(); }
 
 private:
     void x_load_long();
@@ -47,6 +49,7 @@ private:
     OneDataLine     line_;
     bool            unget_line_;
     idx_t         line_number_;
+    int		eol_length_;
 };
 
 #endif // BUFFER_LINE_ITERATOR_H

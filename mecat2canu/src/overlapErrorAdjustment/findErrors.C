@@ -86,6 +86,7 @@ Extract_Needed_Frags(feParameters *G,
   uint32 ii       = 0;                        //  Index into reads arrays
   uint32 fi       = G->olaps[lastOlap].b_iid;  //  Actual ID we're extracting
 
+  if (hiID < fi) return;
   assert(loID <= fi);
 
   fprintf(stderr, "Extract_Needed_Frags()--  Loading used reads between "F_U32" and "F_U32".\n",

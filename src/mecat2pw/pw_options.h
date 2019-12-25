@@ -1,24 +1,34 @@
 #ifndef MP_OPTIONS_H
 #define MP_OPTIONS_H
 
+#include <string>
+
 #include "../common/defs.h"
 
 #define TASK_SEED 0
 #define TASK_ALN  1
 
-typedef struct
-{
+typedef struct {
 	int task;
-    const char* reads;
-    const char* output;
-    const char* wrk_dir;
-    int         num_threads;
-    int         num_candidates;
-	int			min_align_size;
-	int			min_kmer_match;
-    int         output_gapped_start_point;
-	int 		tech;
+	const char* reads;
+	const char* output;
+	const char* wrk_dir;
+	const char* grid_options;
+	const char* grid_options_split;
+	int num_threads;
+	int num_candidates;
+	int min_align_size;
+	int min_kmer_match;
+	int output_gapped_start_point;
+	int tech;
+	int num_vols;
+	int job_index;
+	int reads_to_correct;	// reads must lead fasta file
+	int binary_output;
 } options_t;
+
+std::string
+make_options(options_t* options);
 
 void
 print_options(options_t* options);

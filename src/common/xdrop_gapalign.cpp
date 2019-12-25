@@ -302,7 +302,8 @@ align_ex(const char* query,
 												  qblk,
 												  tblk);
 		
-		int score = xdrop_align(Q, 
+		//int score = xdrop_align(Q, 
+		xdrop_align(Q, 
 								qblk, 
 								T, 
 								tblk, 

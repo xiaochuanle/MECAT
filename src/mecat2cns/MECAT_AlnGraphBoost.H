@@ -39,7 +39,7 @@
 
 #include <boost/graph/adjacency_list.hpp>
 
-#include "../common/alignment.h"
+#include "reads_correction_aux.h"	// CnsResult
 
 namespace ns_meap_cns {
 

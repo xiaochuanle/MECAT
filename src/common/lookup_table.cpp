@@ -1,5 +1,5 @@
 #include "lookup_table.h"
-#include "packed_db.h"
+#include "split_database.h"
 
 #include <cstdio>
 
@@ -41,7 +41,7 @@ fill_ref_index_offsets_func(void* arg)
 		for (j = 0; j < read_size; ++j)
 		{
 			int k = read_start + j;
-			uint8_t c = PackedDB::get_char(v->data, k);
+			uint8_t c = GET_CHAR(v->data, k);
 			eit = (eit << 2) | c;
 			assert(eit < index_count);
 			if (j >= kmer_size - 1)
@@ -78,7 +78,7 @@ create_ref_index(volume_t* v, int kmer_size, int num_threads)
 		for (int j = 0; j < read_size; ++j)
 		{
 			int k = read_start + j;
-			uint8_t c = PackedDB::get_char(v->data, k);
+			uint8_t c = GET_CHAR(v->data, k);
 			assert(c>= 0 && c < 4);
 			eit = (eit << 2) | c;
 			if (j >= kmer_size - 1)
@@ -97,13 +97,13 @@ create_ref_index(volume_t* v, int kmer_size, int num_threads)
 		if (index->kmer_counts[i] > 128) index->kmer_counts[i] = 0;
 		num_kmers += index->kmer_counts[i];
 	}
-	printf("number of kmers: %d\n", num_kmers);
+	std::cout << "number of kmers: " << num_kmers << "\n";
 	safe_malloc(index->kmer_offsets, int, num_kmers);
 	safe_malloc(index->kmer_starts, int*, index_count);
 	
 	if (v->curr < 10 * 1000000) num_threads = 1;
 	int kmers_per_thread = (num_kmers + num_threads - 1) / num_threads;
-	fprintf(stderr, "%d threads are used for filling offset lists.\n", num_threads);
+	std::cerr << num_threads << " threads are used for filling offset lists.\n";
 	uint32_t hash_boundaries[2 * num_threads];
 	uint32_t L = 0;
 	num_kmers = 0;
@@ -120,7 +120,7 @@ create_ref_index(volume_t* v, int kmer_size, int num_threads)
 			
 			if (kmer_cnt >= kmers_per_thread)
 			{
-				printf("thread %d: %d\t%d\n", tid, L, i);
+				std::cout << "thread " << tid << ": " << L << "\t" << i << "\n";
 				hash_boundaries[2 * tid] = L;
 				hash_boundaries[2 * tid + 1] = i;
 				++tid;
@@ -135,7 +135,7 @@ create_ref_index(volume_t* v, int kmer_size, int num_threads)
 	}
 	if (kmer_cnt)
 	{
-		printf("thread %d: %d\t%d\n", tid, L, index_count - 1);
+		std::cout << "thread " << tid << ": " << L << "\t" << (index_count - 1) << "\n";
 		hash_boundaries[2 * tid] = L;
 		hash_boundaries[2 * tid + 1] = index_count - 1;
 	}

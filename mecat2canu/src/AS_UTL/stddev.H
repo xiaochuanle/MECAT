@@ -246,12 +246,12 @@ public:
     return(_mad);
   };
 
-  vector<uint64>    &histogram(void) {    //  Returns pointer to private histogram data
+  vector<uint64>    *histogram(void) {    //  Returns pointer to private histogram data
     finalizeData();
     return(&_histogram);
   };
 
-  vector<uint64>    &Nstatistics(void) {  //  Returns pointer to private N data
+  vector<uint64>    *Nstatistics(void) {  //  Returns pointer to private N data
     finalizeData();
     return(&_Nstatistics);
   };

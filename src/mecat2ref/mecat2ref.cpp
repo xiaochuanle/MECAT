@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
-#define RM 100000
+#define RM 500000
 
 #include "output.h"
 #include "../common/defs.h"
@@ -462,7 +462,6 @@ int main(int argc, char *argv[])
 	
     char cmd[300], outfile[200];
     int corenum;
-    long filelength;
     struct timeval tpstart, tpend;
     struct timeval mapstart, mapend;
     float timeuse;
@@ -492,7 +491,7 @@ int main(int argc, char *argv[])
     int num_read_items = fscanf(fid1, "%d %d\n", &corenum,&readcount);
 	assert(num_read_items == 2);
     fclose(fid1);
-    filelength=get_file_size(fastafile);
+    // long filelength=get_file_size(fastafile);
     gettimeofday(&mapstart, NULL);
 	meap_ref_impl_large(num_candidates, num_output, tech);
     gettimeofday(&mapend, NULL);
