@@ -22,7 +22,7 @@
 
 
 
-MECAT is an ultra-fast Mapping, Error Correction and de novo Assembly Tools for single molecula sequencing (SMRT) reads. MECAT employs novel alignment and error correction algorithms that are much more efficient than the state of art of aligners and error correction tools. MECAT can be used for effectively de novo assemblying large genomes. For example, on a 32-thread computer with 2.0 GHz CPU , MECAT takes 9.5 days to assemble a human genome based on 54x SMRT data, which is 40 times faster than the current [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/). We also use MECAT to assemble a diploid human genome based on 102x SMRT data only in 25 days. The latter assembly leads a great improvement of quality to the previous genome assembled from the 54x haploid SMRT data. MECAT performance were compared with [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/),  [FALCON](https://github.com/PacificBiosciences/falcon) and [Canu(v1.3)](http://canu.readthedocs.io/en/latest/) in five real datasets. The quality of assembled contigs produced by MECAT is the same or better than that of the [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon). Here are some comparisons on the 32-thread computer with 2.0 GHz CPU and 512 GB RAM memory:
+MECAT is an ultra-fast Mapping, Error Correction and de novo Assembly Tool for single molecula sequencing (SMRT) reads. MECAT employs novel alignment and error correction algorithms that are much more efficient than the state of art of aligners and error correction tools. MECAT can be used for effectively de novo assemblying large genomes. For example, on a 32-thread computer with 2.0 GHz CPU , MECAT takes 9.5 days to assemble a human genome based on 54x SMRT data, which is 40 times faster than the current [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/). We also use MECAT to assemble a diploid human genome based on 102x SMRT data only in 25 days. The latter assembly leads a great improvement of quality to the previous genome assembled from the 54x haploid SMRT data. MECAT performance were compared with [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/),  [FALCON](https://github.com/PacificBiosciences/falcon) and [Canu(v1.3)](http://canu.readthedocs.io/en/latest/) in five real datasets. The quality of assembled contigs produced by MECAT is the same or better than that of the [PBcR-Mhap pipeline](http://cbcb.umd.edu/software/pbcr/mhap/) and [FALCON](https://github.com/PacificBiosciences/falcon). Here are some comparisons on the 32-thread computer with 2.0 GHz CPU and 512 GB RAM memory:
 
 
 <div>
@@ -481,7 +481,7 @@ mapped reference subsequence
 
 ```
 
-The strands of the reads are always forward. In the `[ref strand]` field, `F` indicates forward strand while `R` indicates reverse strand. All the positions are zero-based and relative to the forward strand. Here is an example:
+The strands of the read are always forward. In the `[ref strand]` field, `F` indicates forward strand while `R` indicates reverse strand. All the positions are zero-based and relative to the forward strand. Here is an example:
 
 ```shell
 
